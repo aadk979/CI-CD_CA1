@@ -201,9 +201,9 @@ All resources in **ap-southeast-1 (Singapore)**.
 
 ## Workflow conventions (Jira + Git)
 
-- Branches: `feature/TIX-12-seat-holds`, `bugfix/TIX-40-hold-expiry`, `hotfix/TIX-50-…`
-- Commits: `TIX-12 Add seat hold expiry job` (Jira key first)
-- PR titles: `TIX-12 Implement seat holds` — the template in `.github/` lists the checklist
+- Branches: `feature/SCRUM-12-seat-holds`, `bugfix/SCRUM-40-hold-expiry`, `hotfix/SCRUM-50-…`
+- Commits: `SCRUM-12 Add seat hold expiry job` (Jira key first)
+- PR titles: `SCRUM-12 Implement seat holds` — the template in `.github/` lists the checklist
 - Jira automation: _PR created_ → In Review; _Deployment succeeded_ → Done
 
 **Seeding Jira:** create `.env.jira` (git-ignored):

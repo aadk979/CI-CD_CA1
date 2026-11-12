@@ -9,7 +9,7 @@
  *   JIRA_BASE_URL=https://your-site.atlassian.net
  *   JIRA_EMAIL=you@example.com
  *   JIRA_API_TOKEN=...   (https://id.atlassian.com/manage-profile/security/api-tokens)
- *   JIRA_PROJECT_KEY=TIX
+ *   JIRA_PROJECT_KEY=SCRUM
  *
  * Safe to re-run: it refuses to create duplicates if issues with the seed label exist
  * (pass --force to override), and reuses sprints that already exist by name.

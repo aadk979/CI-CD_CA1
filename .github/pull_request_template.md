@@ -1,4 +1,4 @@
-<!-- Title format: "<JIRA-KEY> Short description", e.g. "TIX-12 Add seat hold expiry" -->
+<!-- Title format: "<JIRA-KEY> Short description", e.g. "SCRUM-12 Add seat hold expiry" -->
 
 ## Summary
 
@@ -16,4 +16,4 @@
 
 ## Jira
 
-<!-- e.g. TIX-12 — the key in the branch name and title links this PR to the issue -->
+<!-- e.g. SCRUM-12 — the key in the branch name and title links this PR to the issue -->
