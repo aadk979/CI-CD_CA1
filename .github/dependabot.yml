@@ -8,6 +8,21 @@ updates:
       dev-dependencies:
         dependency-type: development
         update-types: [minor, patch]
+    ignore:
+      # Pinned on purpose until the toolchain supports them:
+      # typescript-eslint requires TypeScript < 6.1; eslint-plugin-react requires ESLint 9.
+      - dependency-name: typescript
+        versions: ['>=6.1.0']
+      - dependency-name: eslint
+        versions: ['>=10.0.0']
+      # Keep Node type definitions on the Node LTS line we run (24).
+      - dependency-name: '@types/node'
+        update-types: [version-update:semver-major]
+      # Prisma 8 is pre-release; upgrade deliberately.
+      - dependency-name: 'prisma'
+        update-types: [version-update:semver-major]
+      - dependency-name: '@prisma/*'
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: github-actions
     directory: /
@@ -16,3 +31,7 @@ updates:
   - package-ecosystem: docker
     directory: /
     schedule: { interval: weekly }
+    ignore:
+      # Stay on Node LTS (24); odd-numbered majors are short-lived.
+      - dependency-name: node
+        update-types: [version-update:semver-major]
