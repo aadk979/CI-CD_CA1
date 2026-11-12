@@ -91,7 +91,7 @@ npm install                    # also generates the Prisma client
 cp .env.example .env.local     # local config (git-ignored)
 npm run db:up                  # Postgres + Redis containers (creates a separate test DB too)
 npm run db:deploy              # apply migrations
-npm run db:seed                # demo venue + events
+npm run db:seed                # demo venue (1,400-seat map) + priced events
 
 npm run dev                    # http://localhost:3000  (Next.js + Socket.IO)
 npm run dev:worker             # in a second terminal: BullMQ worker
