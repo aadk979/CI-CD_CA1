@@ -1,0 +1,47 @@
+# ── Course material & local tooling (never committed) ─────────
+/docs/
+.claude/
+.claude*
+CLAUDE.md
+CLAUDE.local.md
+.agents/
+.windsurf/
+skills-lock.json
+
+# ── Dependencies ──────────────────────────────────────────────
+/node_modules
+/.pnp
+.pnp.*
+
+# ── Build output ──────────────────────────────────────────────
+/.next/
+/out/
+/build
+/dist
+/src/generated/
+*.tsbuildinfo
+next-env.d.ts
+
+# ── Test & QA output ─────────────────────────────────────────
+/coverage
+/reports
+/playwright-report
+/test-results
+/blob-report
+/playwright/.cache
+
+# ── Environment files (secrets) ──────────────────────────────
+# .env.example and .env.test hold only non-secret local defaults.
+.env*
+!.env.example
+!.env.test
+
+# ── Misc ─────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.pem
+*.log
+npm-debug.log*
+.vercel
+.idea/
+!deploy/.env.production.example

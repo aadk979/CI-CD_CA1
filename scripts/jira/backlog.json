@@ -1,0 +1,461 @@
+{
+  "label": "ca1-seed",
+  "sprints": [
+    {
+      "id": "S1",
+      "name": "Sprint 1 — Foundation & pipeline",
+      "start": "2026-11-12T09:00:00+08:00",
+      "end": "2026-11-18T18:00:00+08:00",
+      "goal": "A deployed walking skeleton: every merge to main is tested and shipped to AWS automatically; users can register, log in and browse events."
+    },
+    {
+      "id": "S2",
+      "name": "Sprint 2 — Core ticketing",
+      "start": "2026-11-19T09:00:00+08:00",
+      "end": "2026-11-25T18:00:00+08:00",
+      "goal": "Fair, real-time ticket buying: waiting room, live seat map, seat holds without double booking, and checkout."
+    }
+  ],
+  "epics": [
+    {
+      "summary": "DevOps & CI/CD Pipeline",
+      "description": "Automated quality gates and continuous delivery to AWS (Lightsail + RDS).",
+      "issues": [
+        {
+          "type": "Task",
+          "summary": "Scaffold Next.js app with TypeScript, ESLint and Prettier",
+          "points": 3,
+          "priority": "must",
+          "sprint": "S1",
+          "description": "Initial project structure: Next.js 16 App Router, custom server, BullMQ worker, Prisma.",
+          "acceptance": [
+            "npm run lint, format:check and typecheck pass",
+            "Project builds with npm run build",
+            "docs/ and tooling folders are git-ignored"
+          ]
+        },
+        {
+          "type": "Task",
+          "summary": "Local development environment with Docker Compose (Postgres + Redis)",
+          "points": 2,
+          "priority": "must",
+          "sprint": "S1",
+          "acceptance": [
+            "docker compose up starts Postgres and Redis with health checks",
+            "A separate test database is created automatically",
+            "README documents local setup"
+          ]
+        },
+        {
+          "type": "Task",
+          "summary": "CI pipeline: lint, typecheck, unit/integration tests with 80% coverage gate, E2E",
+          "points": 5,
+          "priority": "must",
+          "sprint": "S1",
+          "acceptance": [
+            "Runs on every push and pull request to main",
+            "Postgres and Redis run as service containers (no shared database)",
+            "Build fails if any coverage metric drops below 80%",
+            "Playwright E2E runs against the production build"
+          ]
+        },
+        {
+          "type": "Task",
+          "summary": "Publish QA reports (coverage, Playwright) to GitHub Pages",
+          "points": 2,
+          "priority": "should",
+          "sprint": "S1",
+          "acceptance": [
+            "Reports published on every push to main",
+            "Index page links to each report"
+          ]
+        },
+        {
+          "type": "Task",
+          "summary": "Provision AWS RDS PostgreSQL and Lightsail instance",
+          "points": 5,
+          "priority": "must",
+          "sprint": "S1",
+          "acceptance": [
+            "RDS instance is not publicly accessible",
+            "Lightsail reaches RDS via VPC peering; security group allows only the Lightsail CIDR",
+            "Lightsail has a static IP, Docker installed and a non-root deploy user",
+            "Connection uses SSL (sslmode=require)"
+          ]
+        },
+        {
+          "type": "Task",
+          "summary": "CD pipeline: deploy to Lightsail with migrations, smoke test and auto-rollback",
+          "points": 8,
+          "priority": "must",
+          "sprint": "S1",
+          "acceptance": [
+            "Triggered only after CI succeeds on main (workflow_run)",
+            "Deploys the exact image CI built, tagged with the commit SHA",
+            "Runs prisma migrate deploy before restarting",
+            "Smoke test confirms /api/health reports the new version",
+            "Failed smoke test rolls back to the last good image",
+            "Manual rollback via workflow_dispatch"
+          ]
+        },
+        {
+          "type": "Task",
+          "summary": "Branch protection and Jira automation rules",
+          "points": 2,
+          "priority": "must",
+          "sprint": "S1",
+          "acceptance": [
+            "main requires a pull request and passing CI checks",
+            "PR created moves the issue to In Review",
+            "Deployment succeeded moves the issue to Done"
+          ]
+        },
+        {
+          "type": "Task",
+          "summary": "Security scanning with CodeQL and Dependabot",
+          "points": 3,
+          "priority": "should",
+          "sprint": "S2",
+          "acceptance": [
+            "CodeQL runs on pull requests and weekly",
+            "Dependabot opens update PRs for npm, Actions and Docker"
+          ]
+        },
+        {
+          "type": "Task",
+          "summary": "Uptime monitoring and failure notifications",
+          "points": 2,
+          "priority": "could",
+          "acceptance": [
+            "External monitor pings /api/health every 5 minutes",
+            "Failed workflows notify by email"
+          ]
+        }
+      ]
+    },
+    {
+      "summary": "User Accounts & Access",
+      "description": "Registration, sessions and role-based access.",
+      "issues": [
+        {
+          "type": "Story",
+          "summary": "Register an account",
+          "points": 3,
+          "priority": "must",
+          "sprint": "S1",
+          "description": "As a fan, I want to create an account so that I can buy and keep my tickets.",
+          "acceptance": [
+            "Email must be valid and unique",
+            "Password must be 8-72 characters and is stored hashed",
+            "Validation errors are shown next to each field"
+          ]
+        },
+        {
+          "type": "Story",
+          "summary": "Log in and log out",
+          "points": 5,
+          "priority": "must",
+          "sprint": "S1",
+          "description": "As a registered fan, I want to log in so that my orders and holds are tied to me.",
+          "acceptance": [
+            "Session cookie is httpOnly, secure and sameSite",
+            "Wrong credentials show a generic error",
+            "Logging out invalidates the session"
+          ]
+        },
+        {
+          "type": "Story",
+          "summary": "Organiser-only pages protected by role (Next.js proxy)",
+          "points": 3,
+          "priority": "should",
+          "sprint": "S2",
+          "description": "As an organiser, I want organiser pages restricted to my role so that fans cannot edit events.",
+          "acceptance": [
+            "Unauthenticated users are redirected to login",
+            "Fans receive 403 on organiser routes and actions",
+            "Authorisation is re-checked in server actions, not only in the proxy"
+          ]
+        }
+      ]
+    },
+    {
+      "summary": "Event Catalogue",
+      "description": "Discovering and managing events.",
+      "issues": [
+        {
+          "type": "Story",
+          "summary": "Browse upcoming events",
+          "points": 2,
+          "priority": "must",
+          "sprint": "S1",
+          "description": "As a fan, I want to see events that are on sale so that I can pick one to attend.",
+          "acceptance": [
+            "Only ON_SALE events in the future are listed, soonest first",
+            "Each item shows title, date/time (SGT) and venue"
+          ]
+        },
+        {
+          "type": "Story",
+          "summary": "View event details",
+          "points": 3,
+          "priority": "must",
+          "sprint": "S1",
+          "description": "As a fan, I want an event page so that I can see details and price tiers before buying.",
+          "acceptance": [
+            "Route /events/[slug] shows description, venue, date and price tiers",
+            "Unknown slug returns the 404 page"
+          ]
+        },
+        {
+          "type": "Story",
+          "summary": "Search and filter events",
+          "points": 3,
+          "priority": "should",
+          "sprint": "S2",
+          "description": "As a fan, I want to filter events by keyword, city and date so that I find relevant shows quickly.",
+          "acceptance": [
+            "Filters are reflected in the URL (shareable)",
+            "Empty results show a helpful message"
+          ]
+        },
+        {
+          "type": "Story",
+          "summary": "Organiser creates and publishes an event",
+          "points": 5,
+          "priority": "must",
+          "sprint": "S2",
+          "description": "As an organiser, I want to create events with seating and prices so that fans can buy tickets.",
+          "acceptance": [
+            "Form uses Server Actions with server-side validation",
+            "Event starts as DRAFT and can be published to ON_SALE",
+            "Event list cache is revalidated on publish"
+          ]
+        }
+      ]
+    },
+    {
+      "summary": "Seat Selection & Holds",
+      "description": "Reserved seating with temporary holds and no double booking.",
+      "issues": [
+        {
+          "type": "Task",
+          "summary": "Seat map data model (sections, rows, seats, price tiers)",
+          "points": 3,
+          "priority": "must",
+          "sprint": "S1",
+          "acceptance": [
+            "Prisma models and migration for sections, seats and price tiers",
+            "Seed script generates a seat map for the demo venue"
+          ]
+        },
+        {
+          "type": "Story",
+          "summary": "Interactive seat map",
+          "points": 5,
+          "priority": "must",
+          "sprint": "S2",
+          "description": "As a fan, I want to pick seats on a map so that I know exactly where I will sit.",
+          "acceptance": [
+            "Available, held and sold seats are visually distinct",
+            "Maximum 6 seats per order",
+            "Keyboard accessible"
+          ]
+        },
+        {
+          "type": "Story",
+          "summary": "Hold selected seats for 10 minutes",
+          "points": 5,
+          "priority": "must",
+          "sprint": "S2",
+          "description": "As a fan, I want my chosen seats held while I check out so that nobody takes them.",
+          "acceptance": [
+            "Hold lasts 10 minutes with a visible countdown",
+            "Held seats cannot be selected by others"
+          ]
+        },
+        {
+          "type": "Story",
+          "summary": "Prevent double booking under concurrent requests",
+          "points": 5,
+          "priority": "must",
+          "sprint": "S2",
+          "description": "As a fan, I want a guarantee that a seat I hold or buy is mine alone.",
+          "acceptance": [
+            "Two simultaneous holds on the same seat: exactly one succeeds",
+            "Enforced in the database (transaction/constraint), not just the UI",
+            "Integration test fires concurrent requests to prove it"
+          ]
+        },
+        {
+          "type": "Task",
+          "summary": "Release expired holds with BullMQ delayed jobs",
+          "points": 3,
+          "priority": "must",
+          "sprint": "S2",
+          "acceptance": [
+            "Delayed job scheduled when a hold is created",
+            "Expired, unpaid holds are released and broadcast to viewers",
+            "Job is idempotent (safe if a hold was already paid)"
+          ]
+        }
+      ]
+    },
+    {
+      "summary": "Virtual Waiting Room",
+      "description": "Fair queueing for high-demand on-sales.",
+      "issues": [
+        {
+          "type": "Story",
+          "summary": "Join the waiting room for a high-demand on-sale",
+          "points": 5,
+          "priority": "must",
+          "sprint": "S2",
+          "description": "As a fan, I want to join a fair queue when tickets go on sale so that bots and refreshers don't win.",
+          "acceptance": [
+            "Users are queued first-come-first-served",
+            "Refreshing the page keeps your place"
+          ]
+        },
+        {
+          "type": "Task",
+          "summary": "Admit queued users in batches via BullMQ worker",
+          "points": 5,
+          "priority": "must",
+          "sprint": "S2",
+          "acceptance": [
+            "Worker admits N users every interval (configurable)",
+            "Admitted users get a time-limited access token for checkout"
+          ]
+        },
+        {
+          "type": "Story",
+          "summary": "Live queue position over WebSocket",
+          "points": 3,
+          "priority": "must",
+          "sprint": "S2",
+          "description": "As a queued fan, I want to see my position update live so that I know how long to wait.",
+          "acceptance": [
+            "Position and estimated wait update without refreshing",
+            "Fan is redirected automatically when admitted"
+          ]
+        }
+      ]
+    },
+    {
+      "summary": "Real-time Updates",
+      "description": "WebSocket infrastructure for live updates.",
+      "issues": [
+        {
+          "type": "Task",
+          "summary": "Socket.IO server with Redis adapter and event rooms",
+          "points": 3,
+          "priority": "must",
+          "sprint": "S1",
+          "acceptance": [
+            "Socket.IO runs on the custom Next.js server",
+            "Worker can broadcast through the Redis emitter",
+            "Clients can only join valid event rooms"
+          ]
+        },
+        {
+          "type": "Story",
+          "summary": "Live seat availability broadcast",
+          "points": 3,
+          "priority": "must",
+          "sprint": "S2",
+          "description": "As a fan viewing a seat map, I want seats to update as others hold or buy them.",
+          "acceptance": [
+            "Updates reach viewers of the same event within 1 second",
+            "Viewers of other events receive nothing"
+          ]
+        }
+      ]
+    },
+    {
+      "summary": "Checkout & Tickets",
+      "description": "Purchasing and ticket delivery.",
+      "issues": [
+        {
+          "type": "Story",
+          "summary": "Check out and create an order (mock payment)",
+          "points": 5,
+          "priority": "must",
+          "sprint": "S2",
+          "description": "As a fan with held seats, I want to pay so that the tickets become mine.",
+          "acceptance": [
+            "Order total matches the seats' price tiers",
+            "Payment is simulated; success converts holds to sold seats atomically",
+            "Expired hold cannot be checked out"
+          ]
+        },
+        {
+          "type": "Story",
+          "summary": "My tickets page",
+          "points": 2,
+          "priority": "must",
+          "sprint": "S2",
+          "description": "As a fan, I want to see my upcoming tickets in one place.",
+          "acceptance": ["Lists orders with event, seats and date", "Only the owner can view"]
+        },
+        {
+          "type": "Story",
+          "summary": "Ticket with scannable QR code",
+          "points": 3,
+          "priority": "should",
+          "description": "As a fan, I want a QR code per ticket so that I can enter the venue.",
+          "acceptance": ["Each ticket has a unique, unguessable code"]
+        },
+        {
+          "type": "Task",
+          "summary": "Send order confirmation email via queue",
+          "points": 2,
+          "priority": "could",
+          "acceptance": ["Email job enqueued on successful checkout and retried on failure"]
+        }
+      ]
+    },
+    {
+      "summary": "Quality Assurance & Documentation",
+      "description": "Test planning, test design and project documentation.",
+      "issues": [
+        {
+          "type": "Task",
+          "summary": "Write test plan",
+          "points": 2,
+          "priority": "must",
+          "sprint": "S1",
+          "acceptance": ["Scope, approach, environments, entry/exit criteria and risks documented"]
+        },
+        {
+          "type": "Task",
+          "summary": "Test case specification using equivalence partitioning and boundary values",
+          "points": 3,
+          "priority": "must",
+          "sprint": "S2",
+          "acceptance": [
+            "Test cases for registration, holds, queue and checkout",
+            "Each case traces to a user story"
+          ]
+        },
+        {
+          "type": "Task",
+          "summary": "Load test the waiting room with k6",
+          "points": 3,
+          "priority": "could",
+          "acceptance": ["Report shows throughput and p95 latency at 500 virtual users"]
+        },
+        {
+          "type": "Task",
+          "summary": "Final report and demo preparation",
+          "points": 3,
+          "priority": "must",
+          "sprint": "S2",
+          "acceptance": [
+            "Report covers PM, QA, pipeline, deployment and research",
+            "Demo script rehearsed end to end"
+          ]
+        }
+      ]
+    }
+  ]
+}

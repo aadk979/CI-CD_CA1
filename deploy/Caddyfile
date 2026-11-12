@@ -1,0 +1,6 @@
+# SITE_ADDRESS defaults to ":80" (plain HTTP on the static IP).
+# Set it to e.g. "tickets.example.com" for automatic HTTPS.
+{$SITE_ADDRESS::80} {
+	encode zstd gzip
+	reverse_proxy app:3000
+}

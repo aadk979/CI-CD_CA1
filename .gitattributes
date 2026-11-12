@@ -1,0 +1,4 @@
+# Normalise line endings: LF in the repo and working tree (shell scripts, Prettier, Linux CI).
+* text=auto eol=lf
+*.png binary
+*.ico binary

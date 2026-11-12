@@ -1,0 +1,43 @@
+// Prisma schema — https://pris.ly/d/prisma-schema
+// Connection URL lives in prisma.config.ts (Prisma 7 convention).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Venue {
+  id        String   @id @default(cuid())
+  name      String
+  city      String
+  capacity  Int
+  events    Event[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum EventStatus {
+  DRAFT
+  ON_SALE
+  SOLD_OUT
+  CANCELLED
+}
+
+model Event {
+  id          String      @id @default(cuid())
+  slug        String      @unique
+  title       String
+  description String?
+  startsAt    DateTime
+  status      EventStatus @default(DRAFT)
+  venueId     String
+  venue       Venue       @relation(fields: [venueId], references: [id])
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([startsAt])
+}

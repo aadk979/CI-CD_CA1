@@ -1,0 +1,67 @@
+# Production stack on the AWS Lightsail instance.
+# PostgreSQL is AWS RDS (DATABASE_URL in /opt/ticketing/.env); Redis runs alongside.
+# APP_IMAGE is set by deploy.sh to the exact image the CI pipeline built and tested.
+name: ticketing
+
+services:
+  app:
+    image: ${APP_IMAGE:?APP_IMAGE must be set}
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
+      PORT: 3000
+    depends_on:
+      redis: { condition: service_healthy }
+    restart: unless-stopped
+    logging: &logging
+      driver: json-file
+      options: { max-size: '10m', max-file: '5' }
+
+  worker:
+    image: ${APP_IMAGE:?APP_IMAGE must be set}
+    command: ['node', 'dist/worker.mjs']
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis: { condition: service_healthy }
+    # The image HEALTHCHECK probes HTTP, which the worker doesn't serve.
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+    logging: *logging
+
+  redis:
+    image: redis:7-alpine
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    logging: *logging
+
+  # Reverse proxy: HTTP(S) termination + WebSocket upgrade passthrough.
+  # Set SITE_ADDRESS in .env to a domain for automatic Let's Encrypt HTTPS.
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - '80:80'
+      - '443:443'
+    env_file: .env
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+    restart: unless-stopped
+    logging: *logging
+
+volumes:
+  redisdata:
+  caddy_data:
+  caddy_config:

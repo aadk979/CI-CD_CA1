@@ -1,0 +1,113 @@
+# ─────────────────────────────────────────────────────────────────────────
+#  CD Pipeline — deploy to AWS Lightsail after CI passes on main
+# ─────────────────────────────────────────────────────────────────────────
+# Triggered by workflow_run so it only ever starts after the whole CI
+# Pipeline has finished, and only deploys if CI succeeded. Deploys the exact
+# image CI built and tested (tagged with the commit SHA).
+#
+# Can also be run manually (Actions → CD Pipeline → Run workflow) with an
+# older commit SHA to roll back.
+#
+# Repository variables:  DEPLOY_ENABLED=true, PRODUCTION_URL=http://<static-ip-or-domain>
+# Repository secrets:    LIGHTSAIL_HOST, LIGHTSAIL_USER, LIGHTSAIL_SSH_KEY,
+#                        LIGHTSAIL_KNOWN_HOSTS (output of `ssh-keyscan <host>`)
+# ─────────────────────────────────────────────────────────────────────────
+
+name: CD Pipeline
+
+on:
+  workflow_run:
+    workflows: [CI Pipeline]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Commit SHA of a previously built image to deploy (rollback)
+        required: true
+
+permissions:
+  contents: read
+  packages: read
+
+# Never run two deployments at once; never cancel one mid-flight.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Lightsail
+    runs-on: ubuntu-latest
+    if: >-
+      vars.DEPLOY_ENABLED == 'true' && (
+        github.event_name == 'workflow_dispatch' ||
+        (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+      )
+    # A GitHub "deployment" record → visible in the repo and picked up by Jira
+    # (GitHub for Atlassian) for the "Deployment succeeded" automation trigger.
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_URL }}
+    env:
+      TAG: ${{ inputs.image_tag || github.event.workflow_run.head_sha }}
+      DEPLOY_DIR: /opt/ticketing
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+          sparse-checkout: deploy
+
+      - name: Resolve image
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}:${TAG}" >> "$GITHUB_ENV"
+
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.LIGHTSAIL_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.LIGHTSAIL_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          cat >> ~/.ssh/config <<EOF
+          Host lightsail
+            HostName ${{ secrets.LIGHTSAIL_HOST }}
+            User ${{ secrets.LIGHTSAIL_USER }}
+            IdentityFile ~/.ssh/id_deploy
+            StrictHostKeyChecking yes
+          EOF
+
+      - name: Upload deploy files
+        run: |
+          scp deploy/docker-compose.prod.yml deploy/Caddyfile deploy/deploy.sh "lightsail:$DEPLOY_DIR/"
+
+      - name: Deploy (migrate → restart → smoke test → auto-rollback)
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GHCR_TOKEN" | ssh lightsail "docker login ghcr.io -u ${{ github.actor }} --password-stdin"
+          status=0
+          ssh lightsail "chmod +x $DEPLOY_DIR/deploy.sh && $DEPLOY_DIR/deploy.sh '$IMAGE'" || status=$?
+          ssh lightsail "docker logout ghcr.io" || true
+          exit $status
+
+      - name: External smoke test
+        if: vars.PRODUCTION_URL != ''
+        run: |
+          for _ in $(seq 1 10); do
+            body=$(curl -fsS "${{ vars.PRODUCTION_URL }}/api/health" || true)
+            echo "$body"
+            if [[ "$body" == *"\"version\":\"$TAG\""* ]]; then exit 0; fi
+            sleep 3
+          done
+          echo "::error::Production is not serving version $TAG"
+          exit 1
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Deployment ${{ job.status }}"
+            echo "- Image: \`$IMAGE\`"
+            echo "- URL: ${{ vars.PRODUCTION_URL }}"
+          } >> "$GITHUB_STEP_SUMMARY"
