@@ -2,7 +2,7 @@
 # One image runs both roles:  web  → node dist/server.mjs (default)
 #                              worker → node dist/worker.mjs
 
-FROM node:24-alpine AS base
+FROM node:25-alpine AS base
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 
