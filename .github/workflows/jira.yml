@@ -1,0 +1,76 @@
+# ─────────────────────────────────────────────────────────────────────────
+#  Jira Sync — move Jira issues through the board from GitHub events
+# ─────────────────────────────────────────────────────────────────────────
+#   PR opened / reopened / ready for review  → In Review
+#   Deployed to production (CD succeeded)     → Done
+#   PR merged, while deployment is disabled   → Done   (fallback until CD is live)
+#
+# Issue keys are read from the PR title + branch name, or the deployed commit
+# message (squash merges keep the PR title, e.g. "SCRUM-29 Add seat map (#6)").
+# Issues only ever move forward — see scripts/jira/transition.mjs.
+#
+# Repository variables:  JIRA_BASE_URL, JIRA_PROJECT_KEY
+# Repository secrets:    JIRA_EMAIL, JIRA_API_TOKEN
+#   (token: https://id.atlassian.com/manage-profile/security/api-tokens)
+# ─────────────────────────────────────────────────────────────────────────
+
+name: Jira Sync
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, closed]
+  workflow_run:
+    workflows: [CD Pipeline]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  JIRA_BASE_URL: ${{ vars.JIRA_BASE_URL }}
+  JIRA_PROJECT_KEY: ${{ vars.JIRA_PROJECT_KEY }}
+  JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+  JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+
+jobs:
+  in-review:
+    name: PR opened → In Review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.event.action != 'closed' && !github.event.pull_request.draft
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts/jira
+      # Untrusted text goes through env vars, never interpolated into the script.
+      - env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: node scripts/jira/transition.mjs "In Review" "$PR_TITLE" "$PR_BRANCH"
+
+  done-on-merge:
+    name: PR merged → Done (deployment disabled)
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'pull_request' && github.event.action == 'closed' &&
+      github.event.pull_request.merged && vars.DEPLOY_ENABLED != 'true'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts/jira
+      - env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: node scripts/jira/transition.mjs "Done" "$PR_TITLE" "$PR_BRANCH"
+
+  done-on-deploy:
+    name: Deployed → Done
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts/jira
+      - env:
+          COMMIT_MESSAGE: ${{ github.event.workflow_run.head_commit.message }}
+        run: node scripts/jira/transition.mjs "Done" "$COMMIT_MESSAGE"
