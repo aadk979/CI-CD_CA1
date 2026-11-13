@@ -35,6 +35,8 @@ export default defineConfig({
         DATABASE_URL: process.env.DATABASE_URL!,
         REDIS_URL: process.env.REDIS_URL!,
         PORT: String(PORT),
+        BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET!,
+        BETTER_AUTH_URL: baseURL,
       },
     },
     {

@@ -88,3 +88,67 @@ model Event {
 
   @@index([startsAt])
 }
+
+// ── Authentication (Better Auth) ────────────────────────────────────────────
+// Field names follow Better Auth's core schema; see src/lib/auth.ts.
+
+model User {
+  id            String    @id
+  name          String
+  /// Stored lower-cased, so uniqueness is effectively case-insensitive.
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  sessions      Session[]
+  accounts      Account[]
+}
+
+/// A login session. Deleting the row (log out) invalidates the cookie immediately.
+model Session {
+  id        String   @id
+  /// Random opaque token; the cookie holds a signed copy of it.
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+/// A way of signing in. For email + password, providerId = "credential" and
+/// `password` holds the scrypt hash (never the plain password).
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+}
