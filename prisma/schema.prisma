@@ -11,13 +11,59 @@ datasource db {
 }
 
 model Venue {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   name      String
   city      String
   capacity  Int
   events    Event[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  sections  Section[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+/// A seating area within a venue (e.g. Floor, Lower Bowl). Seats belong to a section.
+model Section {
+  id         String      @id @default(cuid())
+  venueId    String
+  venue      Venue       @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  /// Short stable code shown on tickets, e.g. "FLR". Unique per venue.
+  code       String
+  name       String
+  sortOrder  Int         @default(0)
+  seats      Seat[]
+  priceTiers PriceTier[]
+
+  @@unique([venueId, code])
+}
+
+/// A physical seat. Per-event availability (holds, sales) is tracked separately.
+model Seat {
+  id        String  @id @default(cuid())
+  sectionId String
+  section   Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  /// Row label: A–Z, then AA, AB, …
+  row       String
+  /// Seat number within the row, starting at 1 (CHECK constraint in migration).
+  number    Int
+
+  @@unique([sectionId, row, number])
+}
+
+/// What a section costs for a specific event. One tier per section per event.
+model PriceTier {
+  id         String  @id @default(cuid())
+  eventId    String
+  event      Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  sectionId  String
+  section    Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  /// Display name, e.g. "Category 1". Several sections may share a name and price.
+  name       String
+  /// Integer minor units (cents) to avoid floating-point money (CHECK >= 0 in migration).
+  priceCents Int
+  currency   String  @default("SGD") @db.Char(3)
+
+  @@unique([eventId, sectionId])
+  @@index([sectionId])
 }
 
 enum EventStatus {
@@ -36,6 +82,7 @@ model Event {
   status      EventStatus @default(DRAFT)
   venueId     String
   venue       Venue       @relation(fields: [venueId], references: [id])
+  priceTiers  PriceTier[]
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
