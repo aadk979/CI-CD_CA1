@@ -165,6 +165,10 @@ Principles applied:
 | Secret   | `LIGHTSAIL_USER`        | `ubuntu`                                                |
 | Secret   | `LIGHTSAIL_SSH_KEY`     | Private key of the deploy key pair                      |
 | Secret   | `LIGHTSAIL_KNOWN_HOSTS` | Output of `ssh-keyscan <static-ip>`                     |
+| Variable | `JIRA_BASE_URL`         | `https://<site>.atlassian.net`                          |
+| Variable | `JIRA_PROJECT_KEY`      | `SCRUM`                                                 |
+| Secret   | `JIRA_EMAIL`            | Atlassian account email (for the Jira Sync workflow)    |
+| Secret   | `JIRA_API_TOKEN`        | API token from id.atlassian.com → Security              |
 
 **Branch protection** (Settings → Branches → `main`): require a pull request, require status checks
 _Lint, Format & Types_, _Unit & Integration Tests_, _E2E Tests (Playwright)_, _Dependency Audit_
@@ -204,9 +208,14 @@ All resources in **ap-southeast-1 (Singapore)**.
 - Branches: `feature/SCRUM-12-seat-holds`, `bugfix/SCRUM-40-hold-expiry`, `hotfix/SCRUM-50-…`
 - Commits: `SCRUM-12 Add seat hold expiry job` (Jira key first)
 - PR titles: `SCRUM-12 Implement seat holds` — the template in `.github/` lists the checklist
-- Jira automation: _PR created_ → In Review; _Deployment succeeded_ → Done
+- Jira sync ([`jira.yml`](.github/workflows/jira.yml)): _PR opened_ → In Review; _deployed to
+  production_ → Done (or _PR merged_ → Done while `DEPLOY_ENABLED` is off). Keys are read from the
+  PR title and branch; issues only ever move forward.
+- **GitHub for Atlassian** shows each issue's branches, commits, PRs, builds and deployments in its
+  _Development_ panel.
 
-**Seeding Jira:** create `.env.jira` (git-ignored):
+**Seeding Jira** (only for a fresh, empty project; it is not idempotent against issues created
+another way): create `.env.jira` (git-ignored):
 
 ```bash
 JIRA_BASE_URL=https://<site>.atlassian.net
@@ -221,12 +230,12 @@ issues and two sprints defined in [`scripts/jira/backlog.json`](scripts/jira/bac
 ## Project structure
 
 ```
-├── .github/workflows/   ci.yml, cd.yml
+├── .github/workflows/   ci.yml, cd.yml, jira.yml
 ├── deploy/              Production compose, Caddyfile, deploy.sh (runs on Lightsail)
 ├── docker/              Local Postgres init (test database)
 ├── e2e/                 Playwright specs
 ├── prisma/              Schema, migrations, seed
-├── scripts/             esbuild bundling, Jira seeding
+├── scripts/             esbuild bundling, Jira seeding + issue transitions
 ├── src/
 │   ├── app/             Next.js routes (pages, layouts, route handlers)
 │   ├── components/      React components (client components marked 'use client')
