@@ -35,6 +35,9 @@ env:
   # Matches the service containers below (and .env.test).
   DATABASE_URL: postgresql://ticketing:ticketing@localhost:5432/ticketing_test?schema=public
   REDIS_URL: redis://localhost:6379
+  # Throwaway test-only values (same as .env.test), not real secrets.
+  BETTER_AUTH_SECRET: test-only-secret-test-only-secret-test-only
+  BETTER_AUTH_URL: http://localhost:3100
 
 jobs:
   # ═══════════════════════════════════════════════════════════════════════

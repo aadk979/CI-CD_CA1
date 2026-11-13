@@ -41,6 +41,8 @@ services:
       DATABASE_URL: postgresql://ticketing:ticketing@postgres:5432/ticketing?schema=public
       REDIS_URL: redis://redis:6379
       PORT: 3000
+      BETTER_AUTH_SECRET: dev-only-secret-change-me-dev-only-secret
+      BETTER_AUTH_URL: http://localhost:3000
     ports:
       - '3000:3000'
     depends_on:

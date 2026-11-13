@@ -63,6 +63,7 @@ One Docker image runs both roles; CI builds it once per commit and CD deploys th
 | Real-time     | Socket.IO 4 + `@socket.io/redis-adapter` / `redis-emitter`        |
 | Queues        | BullMQ 6 on Redis 7                                               |
 | Database      | PostgreSQL 17, Prisma ORM 7 (driver adapter `@prisma/adapter-pg`) |
+| Auth          | Better Auth (email + password, database sessions, scrypt hashing) |
 | Styling       | Tailwind CSS 4                                                    |
 | Lint / format | ESLint 9 (`eslint-config-next`), Prettier 3                       |
 | Tests         | Vitest 5 (unit + integration, merged coverage), Playwright (E2E)  |
@@ -72,15 +73,16 @@ One Docker image runs both roles; CI builds it once per commit and CD deploys th
 
 ## Next.js patterns demonstrated
 
-| Pattern                                 | Where                                                             |
-| --------------------------------------- | ----------------------------------------------------------------- |
-| File-system routing & nested layouts    | `src/app/**` (`layout.tsx`, `page.tsx`, dynamic `[slug]`)         |
-| React Server Components + streaming     | `src/app/page.tsx` — DB query in a server component, `<Suspense>` |
-| Partial Prerendering (Cache Components) | `next.config.ts` `cacheComponents` — static shell, dynamic holes  |
-| Route Handlers                          | `src/app/api/health/route.ts`                                     |
-| Server Actions                          | Event creation / checkout forms (Sprint 2)                        |
-| Proxy (formerly Middleware)             | `src/proxy.ts` — role-based route protection (Sprint 2)           |
-| Custom server                           | `server.ts` — Socket.IO alongside the Next.js handler             |
+| Pattern                                    | Where                                                                      |
+| ------------------------------------------ | -------------------------------------------------------------------------- |
+| File-system routing & nested layouts       | `src/app/**` (`layout.tsx`, `page.tsx`, dynamic `[slug]`)                  |
+| React Server Components + streaming        | `src/app/page.tsx` — DB query in a server component, `<Suspense>`          |
+| Partial Prerendering (Cache Components)    | `next.config.ts` `cacheComponents` — static shell, dynamic holes           |
+| Route Handlers                             | `src/app/api/health/route.ts`                                              |
+| Server Actions + `useActionState`          | `src/app/actions/auth.ts` — register / log in / log out forms              |
+| Streaming per-request data in `<Suspense>` | `src/app/layout.tsx` — the signed-in user menu streams into a static shell |
+| Proxy (formerly Middleware)                | `src/proxy.ts` — optimistic route protection (Sprint 2)                    |
+| Custom server                              | `server.ts` — Socket.IO alongside the Next.js handler                      |
 
 ## Getting started
 
@@ -100,6 +102,10 @@ npm run dev:worker             # in a second terminal: BullMQ worker
 The header shows **Live** once the WebSocket connects and _worker seen hh:mm:ss_ once heartbeats
 arrive from the worker. `GET /api/health` reports database, Redis and worker status.
 
+**Accounts:** `/register` and `/login`. Sessions are stored in Postgres, so logging out (or
+deleting the `Session` row) invalidates the cookie immediately. The session cookie is `HttpOnly`
+and `SameSite=Lax` everywhere, and `Secure` whenever `BETTER_AUTH_URL` is `https://` (production).
+
 Run the full production stack in containers instead: `docker compose --profile app up --build`.
 
 ## Scripts
@@ -113,7 +119,7 @@ Run the full production stack in containers instead: `docker compose --profile a
 | `test:unit`, `test:integration`     | Vitest projects                                                              |
 | `test:coverage`                     | Both projects with merged coverage + 80% threshold                           |
 | `test:e2e`                          | Playwright against the production build (run `build` first)                  |
-| `db:migrate`                        | Create a new migration from `prisma/schema.prisma` changes                   |
+| `db:migrate`                        | Create + apply a migration (`-- --name x`), then regenerate the client       |
 | `db:deploy` / `db:seed`             | Apply migrations / seed demo data                                            |
 | `jira:seed`                         | Populate Jira with the backlog and sprints (see below)                       |
 
@@ -121,9 +127,9 @@ Run the full production stack in containers instead: `docker compose --profile a
 
 | Level       | Tool       | Scope                                                                                       | Infra                |
 | ----------- | ---------- | ------------------------------------------------------------------------------------------- | -------------------- |
-| Unit        | Vitest     | Pure logic: env validation, health aggregation, job processors, input guards                | none (mocks)         |
-| Integration | Vitest     | Real Postgres + Redis: queries, Socket.IO rooms via Redis adapter, BullMQ job → socket push | Docker / CI services |
-| E2E         | Playwright | Production build in Chromium: pages, live socket, worker heartbeat, health API              | Docker / CI services |
+| Unit        | Vitest     | Pure logic: env + form validation, health aggregation, job processors, auth error mapping   | none (mocks)         |
+| Integration | Vitest     | Real Postgres + Redis: queries, auth (hashing, cookies, logout), Socket.IO, BullMQ → socket | Docker / CI services |
+| E2E         | Playwright | Production build in Chromium: register/login/logout, pages, live socket, worker heartbeat   | Docker / CI services |
 
 - Unit and integration run as two Vitest **projects** in one process, so coverage is **merged**
   and the 80% threshold (statements, branches, functions, lines) applies to the combined result.
