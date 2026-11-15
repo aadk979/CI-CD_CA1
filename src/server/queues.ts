@@ -1,15 +1,20 @@
 import { Queue, type ConnectionOptions } from 'bullmq';
+import { createRedis } from '@/lib/redis';
 
 /** Every BullMQ queue in the system. Add new queues here so names stay consistent. */
 export const QUEUE_NAMES = {
   /** Housekeeping jobs: worker heartbeat, scheduled clean-ups. */
   system: 'system',
+  /** Seat holds: release each cart when its timer runs out, plus a periodic sweep. */
+  holds: 'holds',
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
 
 export const JOB_NAMES = {
   heartbeat: 'heartbeat',
+  releaseHolds: 'release-holds',
+  sweepHolds: 'sweep-holds',
 } as const;
 
 export function createQueue(name: QueueName, connection: ConnectionOptions): Queue {
@@ -22,4 +27,20 @@ export function createQueue(name: QueueName, connection: ConnectionOptions): Que
       removeOnFail: { count: 500 },
     },
   });
+}
+
+const globalForQueues = globalThis as unknown as { queues?: Map<QueueName, Queue> };
+
+/**
+ * Shared producer-side queue for the web process (Server Actions enqueue jobs here).
+ * One connection per queue per process, created on first use so builds never need Redis.
+ */
+export function getQueue(name: QueueName): Queue {
+  globalForQueues.queues ??= new Map();
+  let queue = globalForQueues.queues.get(name);
+  if (!queue) {
+    queue = createQueue(name, createRedis());
+    globalForQueues.queues.set(name, queue);
+  }
+  return queue;
 }

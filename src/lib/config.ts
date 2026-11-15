@@ -5,3 +5,8 @@ export const APP_NAME = 'TixQueue';
 export const PASSWORD_MIN = 8;
 /** Upper bound keeps hashing cost bounded and matches the acceptance criteria. */
 export const PASSWORD_MAX = 72;
+
+/** How long seats stay in a fan's cart. One timer per cart: seats added later share it. */
+export const HOLD_DURATION_MS = 10 * 60 * 1000;
+/** Most seats one fan can hold (or buy) for one event at a time. */
+export const MAX_SEATS_PER_ORDER = 6;

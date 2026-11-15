@@ -6,10 +6,15 @@
 import { loadEnv } from '@/lib/load-env';
 import { Emitter } from '@socket.io/redis-emitter';
 import { Worker } from 'bullmq';
-import { disconnectPrisma } from '@/lib/db';
+import { disconnectPrisma, getPrisma } from '@/lib/db';
 import type { ServerToClientEvents } from '@/lib/realtime';
 import { createRedis } from '@/lib/redis';
 import { HEARTBEAT_INTERVAL_MS, createHeartbeatProcessor } from '@/server/jobs/heartbeat';
+import {
+  HOLD_SWEEP_INTERVAL_MS,
+  createReleaseHoldsProcessor,
+  type ReleaseHoldsJobData,
+} from '@/server/jobs/release-holds';
 import { JOB_NAMES, QUEUE_NAMES, createQueue } from '@/server/queues';
 
 loadEnv();
@@ -43,16 +48,46 @@ async function main() {
     { connection: createRedis() },
   );
 
-  systemWorker.on('failed', (job, err) => {
-    console.error(`Job ${job?.name}#${job?.id} failed:`, err.message);
+  const holdsQueue = createQueue(QUEUE_NAMES.holds, redis);
+  await holdsQueue.upsertJobScheduler(
+    JOB_NAMES.sweepHolds,
+    { every: HOLD_SWEEP_INTERVAL_MS },
+    { name: JOB_NAMES.sweepHolds },
+  );
+
+  const releaseHolds = createReleaseHoldsProcessor({
+    prisma: getPrisma(),
+    onReleased: ({ eventId, seatIds }) =>
+      console.log(`Released ${seatIds.length} expired hold(s) for event ${eventId}`),
   });
+
+  const holdsWorker = new Worker<Partial<ReleaseHoldsJobData>>(
+    QUEUE_NAMES.holds,
+    async (job) => {
+      switch (job.name) {
+        case JOB_NAMES.releaseHolds:
+          return releaseHolds(job.data);
+        case JOB_NAMES.sweepHolds:
+          return releaseHolds();
+        default:
+          throw new Error(`Unknown job "${job.name}" on queue "${QUEUE_NAMES.holds}"`);
+      }
+    },
+    { connection: createRedis() },
+  );
+
+  for (const worker of [systemWorker, holdsWorker]) {
+    worker.on('failed', (job, err) => {
+      console.error(`Job ${job?.name}#${job?.id} failed:`, err.message);
+    });
+  }
 
   console.log(`> Worker ready — consuming queues: ${Object.values(QUEUE_NAMES).join(', ')}`);
 
   const shutdown = async (signal: string) => {
     console.log(`${signal} received — draining worker`);
-    await systemWorker.close(); // waits for in-flight jobs
-    await systemQueue.close();
+    await Promise.all([systemWorker.close(), holdsWorker.close()]); // waits for in-flight jobs
+    await Promise.all([systemQueue.close(), holdsQueue.close()]);
     await Promise.allSettled([redis.quit(), disconnectPrisma()]);
     process.exit(0);
   };
