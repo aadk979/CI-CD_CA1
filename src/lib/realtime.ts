@@ -10,9 +10,17 @@ export interface HeartbeatPayload {
   at: string;
 }
 
+/** Seats of one event changed hands: now held/sold ("taken") or free again ("available"). */
+export interface SeatsUpdatePayload {
+  eventId: string;
+  seatIds: string[];
+  status: 'taken' | 'available';
+}
+
 export interface ServerToClientEvents {
   'server:hello': (payload: { connectedAt: string }) => void;
   'system:heartbeat': (payload: HeartbeatPayload) => void;
+  'seats:update': (payload: SeatsUpdatePayload) => void;
 }
 
 export interface ClientToServerEvents {

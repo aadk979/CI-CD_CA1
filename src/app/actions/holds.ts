@@ -4,6 +4,8 @@ import 'server-only';
 import { refresh } from 'next/cache';
 import { getPrisma } from '@/lib/db';
 import { HOLD_MESSAGES, holdSeats, isValidId, parseHoldInput, releaseSeats } from '@/lib/holds';
+import type { SeatsUpdatePayload } from '@/lib/realtime';
+import { broadcastSeats, getEmitter } from '@/server/broadcast';
 import { scheduleHoldExpiry } from '@/server/jobs/release-holds';
 import { QUEUE_NAMES, getQueue } from '@/server/queues';
 import { getCurrentUser } from '@/server/session';
@@ -18,6 +20,15 @@ export interface HoldActionState {
 
 const SIGN_IN_REQUIRED = 'Log in to hold seats.';
 
+/** Live updates are best-effort: the database is the source of truth, so never fail on them. */
+function notifyViewers(eventId: string, seatIds: string[], status: SeatsUpdatePayload['status']) {
+  try {
+    broadcastSeats(getEmitter(), eventId, seatIds, status);
+  } catch (err) {
+    console.error('Could not broadcast seat update', err);
+  }
+}
+
 export async function holdSeatsAction(
   _prev: HoldActionState,
   formData: FormData,
@@ -31,6 +42,7 @@ export async function holdSeatsAction(
   const result = await holdSeats(getPrisma(), { ...input, userId: user.id });
   refresh(); // re-render the seat map with fresh availability, win or lose
   if (!result.ok) return { ok: false, message: result.message };
+  notifyViewers(input.eventId, result.seatIds, 'taken');
 
   try {
     await scheduleHoldExpiry(
@@ -59,6 +71,7 @@ export async function releaseSeatsAction(
   if (!isValidId(eventId)) return { ok: false, message: HOLD_MESSAGES.notFound };
 
   const released = await releaseSeats(getPrisma(), { eventId, userId: user.id });
+  notifyViewers(eventId, released, 'available');
   refresh();
   return { ok: true, message: released.length ? 'Your seats have been released.' : undefined };
 }

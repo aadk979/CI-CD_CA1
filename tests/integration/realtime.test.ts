@@ -9,9 +9,11 @@ import {
   SOCKET_PATH,
   eventRoom,
   type ClientToServerEvents,
+  type SeatsUpdatePayload,
   type ServerToClientEvents,
 } from '@/lib/realtime';
 import { createRedis } from '@/lib/redis';
+import { broadcastSeats, getEmitter } from '@/server/broadcast';
 import { HEARTBEAT_KEY, createHeartbeatProcessor } from '@/server/jobs/heartbeat';
 import { JOB_NAMES, QUEUE_NAMES, createQueue } from '@/server/queues';
 import { createSocketServer, type SocketServer } from '@/server/socket';
@@ -125,5 +127,33 @@ describe('realtime pipeline (Socket.IO + Redis adapter + BullMQ)', () => {
     await worker.close();
     await queue.obliterate({ force: true });
     await queue.close();
+  });
+
+  it('pushes seat changes to viewers of that event within 1 second, and to nobody else (SCRUM-38)', async () => {
+    const viewer = await client();
+    const otherEvent = await client();
+    viewer.emit('event:join', 'evt-seats');
+    otherEvent.emit('event:join', 'evt-other');
+    await new Promise((r) => setTimeout(r, 100));
+
+    const leaked: SeatsUpdatePayload[] = [];
+    otherEvent.on('seats:update', (p) => leaked.push(p));
+    const received = new Promise<SeatsUpdatePayload>((resolve) =>
+      viewer.on('seats:update', resolve),
+    );
+
+    const sentAt = Date.now();
+    broadcastSeats(getEmitter(), 'evt-seats', ['seatA', 'seatB'], 'taken');
+    const update = await received;
+    const latency = Date.now() - sentAt;
+    await new Promise((r) => setTimeout(r, 100));
+
+    expect(update).toEqual({ eventId: 'evt-seats', seatIds: ['seatA', 'seatB'], status: 'taken' });
+    expect(latency).toBeLessThan(1000);
+    expect(leaked).toEqual([]);
+  });
+
+  it('getEmitter reuses one Redis publisher per process', () => {
+    expect(getEmitter()).toBe(getEmitter());
   });
 });

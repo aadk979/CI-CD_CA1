@@ -9,6 +9,7 @@ import { Worker } from 'bullmq';
 import { disconnectPrisma, getPrisma } from '@/lib/db';
 import type { ServerToClientEvents } from '@/lib/realtime';
 import { createRedis } from '@/lib/redis';
+import { broadcastSeats } from '@/server/broadcast';
 import { HEARTBEAT_INTERVAL_MS, createHeartbeatProcessor } from '@/server/jobs/heartbeat';
 import {
   HOLD_SWEEP_INTERVAL_MS,
@@ -57,8 +58,10 @@ async function main() {
 
   const releaseHolds = createReleaseHoldsProcessor({
     prisma: getPrisma(),
-    onReleased: ({ eventId, seatIds }) =>
-      console.log(`Released ${seatIds.length} expired hold(s) for event ${eventId}`),
+    onReleased: ({ eventId, seatIds }) => {
+      console.log(`Released ${seatIds.length} expired hold(s) for event ${eventId}`);
+      broadcastSeats(emitter, eventId, seatIds, 'available');
+    },
   });
 
   const holdsWorker = new Worker<Partial<ReleaseHoldsJobData>>(

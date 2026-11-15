@@ -6,6 +6,7 @@ import { holdSeatsAction, releaseSeatsAction, type HoldActionState } from '@/app
 import { formatPrice } from '@/lib/format';
 import type { SeatMapSection } from '@/lib/seating';
 import { HoldCountdown } from './hold-countdown';
+import { useSeatUpdates } from './use-seat-updates';
 
 type SeatState = 'available' | 'selected' | 'held' | 'unavailable' | 'not-for-sale';
 
@@ -101,16 +102,25 @@ export function SeatPicker({
 
   const takenSet = useMemo(() => new Set(unavailable), [unavailable]);
   const heldSet = useMemo(() => new Set(held), [held]);
+  // Changes pushed over the socket since this render win over the server's snapshot.
+  const { changes: live, connected } = useSeatUpdates(eventId, ({ seatIds, status }) => {
+    // A seat someone else takes leaves this fan's selection for good, even if it frees up later.
+    if (status === 'taken') setPicked((current) => current.filter((id) => !seatIds.includes(id)));
+  });
+  const isTaken = (seatId: string) => {
+    const change = live.get(seatId);
+    return change ? change === 'taken' : takenSet.has(seatId);
+  };
   // Derived, not stored: once a picked seat is held (or taken by someone else) after a
   // re-render, it simply drops out of the selection.
-  const selected = picked.filter((id) => !takenSet.has(id) && !heldSet.has(id));
+  const selected = picked.filter((id) => !isTaken(id) && !heldSet.has(id));
   const canPickMore = held.length + selected.length < maxSeats;
   const interactive = onSale && !holding && !releasing;
 
   function stateOf(seatId: string, priced: boolean): SeatState {
     if (!priced) return 'not-for-sale';
-    if (heldSet.has(seatId)) return 'held';
-    if (takenSet.has(seatId)) return 'unavailable';
+    if (heldSet.has(seatId)) return 'held'; // our own holds broadcast "taken" too
+    if (isTaken(seatId)) return 'unavailable';
     if (selected.includes(seatId)) return 'selected';
     return 'available';
   }
@@ -135,7 +145,11 @@ export function SeatPicker({
         ))}
       </ul>
 
-      <div className="flex flex-col gap-8 overflow-x-auto" data-testid="seat-map">
+      <div
+        className="flex flex-col gap-8 overflow-x-auto"
+        data-testid="seat-map"
+        data-live={connected}
+      >
         {sections.map((section) => (
           <section key={section.id} aria-label={section.name}>
             <h3 className="mb-2 text-sm font-medium">
