@@ -38,13 +38,14 @@ model Section {
 
 /// A physical seat. Per-event availability (holds, sales) is tracked separately.
 model Seat {
-  id        String  @id @default(cuid())
-  sectionId String
-  section   Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  id           String            @id @default(cuid())
+  sectionId    String
+  section      Section           @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   /// Row label: A–Z, then AA, AB, …
-  row       String
+  row          String
   /// Seat number within the row, starting at 1 (CHECK constraint in migration).
-  number    Int
+  number       Int
+  reservations SeatReservation[]
 
   @@unique([sectionId, row, number])
 }
@@ -74,35 +75,64 @@ enum EventStatus {
 }
 
 model Event {
-  id          String      @id @default(cuid())
-  slug        String      @unique
-  title       String
-  description String?
-  startsAt    DateTime
-  status      EventStatus @default(DRAFT)
-  venueId     String
-  venue       Venue       @relation(fields: [venueId], references: [id])
-  priceTiers  PriceTier[]
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id           String            @id @default(cuid())
+  slug         String            @unique
+  title        String
+  description  String?
+  startsAt     DateTime
+  status       EventStatus       @default(DRAFT)
+  venueId      String
+  venue        Venue             @relation(fields: [venueId], references: [id])
+  priceTiers   PriceTier[]
+  reservations SeatReservation[]
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
 
   @@index([startsAt])
+}
+
+enum ReservationStatus {
+  /// Held in a fan's cart until expiresAt, then released.
+  HELD
+  /// Paid for. Never expires.
+  SOLD
+}
+
+/// A seat taken for one event, held or sold. The unique (eventId, seatId) index is what
+/// makes double booking impossible: a second fan's insert for the same seat fails.
+model SeatReservation {
+  id        String            @id @default(cuid())
+  eventId   String
+  event     Event             @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  seatId    String
+  seat      Seat              @relation(fields: [seatId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status    ReservationStatus @default(HELD)
+  /// When a hold lapses. Required while HELD (CHECK in migration), null once SOLD.
+  expiresAt DateTime?
+  createdAt DateTime          @default(now())
+
+  @@unique([eventId, seatId])
+  @@index([userId, eventId])
+  @@index([status, expiresAt])
 }
 
 // ── Authentication (Better Auth) ────────────────────────────────────────────
 // Field names follow Better Auth's core schema; see src/lib/auth.ts.
 
 model User {
-  id            String    @id
+  id            String            @id
   name          String
   /// Stored lower-cased, so uniqueness is effectively case-insensitive.
-  email         String    @unique
-  emailVerified Boolean   @default(false)
+  email         String            @unique
+  emailVerified Boolean           @default(false)
   image         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
   sessions      Session[]
   accounts      Account[]
+  reservations  SeatReservation[]
 }
 
 /// A login session. Deleting the row (log out) invalidates the cookie immediately.

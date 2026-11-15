@@ -1,15 +1,11 @@
+import Link from 'next/link';
 import { Suspense } from 'react';
 import { connection } from 'next/server';
 import { LiveStatus } from '@/components/live-status';
 import { APP_NAME } from '@/lib/config';
 import { getPrisma } from '@/lib/db';
 import { listUpcomingEvents } from '@/lib/events';
-
-const dateFormat = new Intl.DateTimeFormat('en-SG', {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-  timeZone: 'Asia/Singapore',
-});
+import { formatEventDate } from '@/lib/format';
 
 async function UpcomingEvents() {
   await connection(); // event list is live data — render per request
@@ -23,9 +19,11 @@ async function UpcomingEvents() {
     <ul className="divide-y divide-zinc-200 dark:divide-zinc-800" data-testid="event-list">
       {events.map((event) => (
         <li key={event.id} className="py-4">
-          <p className="font-medium">{event.title}</p>
+          <Link href={`/events/${event.slug}`} className="font-medium hover:underline">
+            {event.title}
+          </Link>
           <p className="text-sm text-zinc-500">
-            {dateFormat.format(event.startsAt)} · {event.venueName}, {event.city}
+            {formatEventDate(event.startsAt)} · {event.venueName}, {event.city}
           </p>
         </li>
       ))}

@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@/generated/prisma/client';
+import type { EventStatus, PrismaClient } from '@/generated/prisma/client';
 
 /** A rectangular block of seats: `rows` rows of `seatsPerRow` seats each. */
 export interface SectionLayout {
@@ -33,8 +33,15 @@ export interface SeatMapSection {
 }
 
 export interface SeatMap {
-  event: { id: string; slug: string; title: string };
-  venue: { id: string; name: string };
+  event: {
+    id: string;
+    slug: string;
+    title: string;
+    description: string | null;
+    startsAt: Date;
+    status: EventStatus;
+  };
+  venue: { id: string; name: string; city: string };
   totalSeats: number;
   sections: SeatMapSection[];
 }
@@ -139,10 +146,14 @@ export async function getSeatMap(prisma: PrismaClient, slug: string): Promise<Se
       id: true,
       slug: true,
       title: true,
+      description: true,
+      startsAt: true,
+      status: true,
       venue: {
         select: {
           id: true,
           name: true,
+          city: true,
           sections: {
             orderBy: [{ sortOrder: 'asc' }, { code: 'asc' }],
             select: {
@@ -185,8 +196,15 @@ export async function getSeatMap(prisma: PrismaClient, slug: string): Promise<Se
   });
 
   return {
-    event: { id: event.id, slug: event.slug, title: event.title },
-    venue: { id: event.venue.id, name: event.venue.name },
+    event: {
+      id: event.id,
+      slug: event.slug,
+      title: event.title,
+      description: event.description,
+      startsAt: event.startsAt,
+      status: event.status,
+    },
+    venue: { id: event.venue.id, name: event.venue.name, city: event.venue.city },
     totalSeats,
     sections,
   };
