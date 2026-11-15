@@ -28,3 +28,37 @@ export function getEnv(): Env {
   cached ??= parseEnv(process.env);
   return cached;
 }
+
+/**
+ * Auth settings are validated separately so processes that never authenticate
+ * anyone (the BullMQ worker) don't need the signing secret.
+ */
+const authEnvSchema = z.object({
+  /** Signs session cookies. Generate with: openssl rand -base64 32 */
+  BETTER_AUTH_SECRET: z.string().min(32, 'BETTER_AUTH_SECRET must be at least 32 characters'),
+  /**
+   * Public URL of the app. An https:// URL makes session cookies `Secure`;
+   * plain http:// is only acceptable for local development and tests.
+   */
+  BETTER_AUTH_URL: z.url({ protocol: /^https?$/, error: 'BETTER_AUTH_URL must be an http(s) URL' }),
+});
+
+export type AuthEnv = z.infer<typeof authEnvSchema>;
+
+export function parseAuthEnv(
+  source: NodeJS.ProcessEnv | Record<string, string | undefined>,
+): AuthEnv {
+  const result = authEnvSchema.safeParse(source);
+  if (!result.success) {
+    const issues = result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
+    throw new Error(`Invalid auth configuration — ${issues}`);
+  }
+  return result.data;
+}
+
+let cachedAuth: AuthEnv | undefined;
+
+export function getAuthEnv(): AuthEnv {
+  cachedAuth ??= parseAuthEnv(process.env);
+  return cachedAuth;
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseEnv } from '@/lib/env';
+import { parseAuthEnv, parseEnv } from '@/lib/env';
 
 const valid = {
   DATABASE_URL: 'postgresql://u:p@localhost:5432/db',
@@ -38,5 +38,32 @@ describe('parseEnv', () => {
 
   it('rejects an unknown NODE_ENV', () => {
     expect(() => parseEnv({ ...valid, NODE_ENV: 'staging' })).toThrow('NODE_ENV');
+  });
+});
+
+describe('parseAuthEnv', () => {
+  const secret = 's'.repeat(32);
+
+  it('accepts a 32+ character secret and an http(s) URL', () => {
+    expect(
+      parseAuthEnv({ BETTER_AUTH_SECRET: secret, BETTER_AUTH_URL: 'https://a.example' }),
+    ).toEqual({ BETTER_AUTH_SECRET: secret, BETTER_AUTH_URL: 'https://a.example' });
+  });
+
+  it.each([
+    [
+      { BETTER_AUTH_SECRET: 's'.repeat(31), BETTER_AUTH_URL: 'http://localhost:3000' },
+      'BETTER_AUTH_SECRET',
+    ],
+    [{ BETTER_AUTH_URL: 'http://localhost:3000' }, 'BETTER_AUTH_SECRET'],
+    [{ BETTER_AUTH_SECRET: secret, BETTER_AUTH_URL: 'not a url' }, 'BETTER_AUTH_URL'],
+    [{ BETTER_AUTH_SECRET: secret, BETTER_AUTH_URL: 'ftp://files.example' }, 'BETTER_AUTH_URL'],
+    [{ BETTER_AUTH_SECRET: secret }, 'BETTER_AUTH_URL'],
+  ])('rejects %o naming %s', (source, name) => {
+    expect(() => parseAuthEnv(source)).toThrow(name);
+  });
+
+  it('is independent of the core env (the worker needs no auth secret)', () => {
+    expect(() => parseEnv(valid)).not.toThrow();
   });
 });
