@@ -10,6 +10,11 @@ services:
     environment:
       REDIS_URL: redis://redis:6379
       PORT: 3000
+      # node-postgres verifies the RDS TLS certificate (sslmode=require); Amazon's CA
+      # isn't in Node's bundle, so trust the regional RDS bundle that deploy.sh fetches.
+      NODE_EXTRA_CA_CERTS: &rds_ca /etc/ssl/rds-ca.pem
+    volumes: &rds_ca_volume
+      - ./rds-ca.pem:/etc/ssl/rds-ca.pem:ro
     depends_on:
       redis: { condition: service_healthy }
     restart: unless-stopped
@@ -23,6 +28,8 @@ services:
     env_file: .env
     environment:
       REDIS_URL: redis://redis:6379
+      NODE_EXTRA_CA_CERTS: *rds_ca
+    volumes: *rds_ca_volume
     depends_on:
       redis: { condition: service_healthy }
     # The image HEALTHCHECK probes HTTP, which the worker doesn't serve.
