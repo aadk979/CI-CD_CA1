@@ -160,7 +160,7 @@ Principles applied:
 | -------- | ----------------------- | ------------------------------------------------------- |
 | Variable | `PAGES_ENABLED`         | `true` after Settings → Pages → Source = GitHub Actions |
 | Variable | `DEPLOY_ENABLED`        | `true` once AWS is provisioned                          |
-| Variable | `PRODUCTION_URL`        | `http://<lightsail-static-ip>` or your domain           |
+| Variable | `PRODUCTION_URL`        | `https://<static-ip-with-dashes>.sslip.io` or a domain  |
 | Secret   | `LIGHTSAIL_HOST`        | Lightsail static IP                                     |
 | Secret   | `LIGHTSAIL_USER`        | `ubuntu`                                                |
 | Secret   | `LIGHTSAIL_SSH_KEY`     | Private key of the deploy key pair                      |
@@ -176,30 +176,67 @@ and _Docker Image_, and block force pushes.
 
 ## AWS deployment setup
 
-All resources in **ap-southeast-1 (Singapore)**.
+All resources in **ap-southeast-1 (Singapore)**. Set an AWS Budgets alert (e.g. USD 10/month)
+before creating anything.
 
-1. **RDS PostgreSQL** — engine PostgreSQL 17, `db.t4g.micro`, default VPC, _Public access: No_,
-   initial database `ticketing`. Note the endpoint.
-2. **Lightsail instance** — Ubuntu 24.04, 2 GB plan. Attach a **static IP**. Networking: allow
-   TCP 22, 80, 443.
-3. **VPC peering** — Lightsail → Account → Advanced → _Enable VPC peering_ (Singapore).
-4. **RDS security group** — inbound PostgreSQL (5432) from the Lightsail CIDR `172.26.0.0/16` only.
-5. **Prepare the instance** (SSH in):
+1. **RDS PostgreSQL** (RDS → Create database → _Standard create_)
+   - Engine PostgreSQL 17, template _Free tier_ (or _Sandbox_), single-AZ `db.t4g.micro`, 20 GB gp3.
+   - Master username `postgres`, self-managed password (letters and digits only, so it can go
+     in a URL unescaped).
+   - Connectivity: _Don't connect to an EC2 compute resource_, **default VPC**,
+     _Public access: No_, new security group `ticketing-rds`.
+   - Additional configuration → _Initial database name_ `ticketing`.
+   - Once it is _Available_, note the **endpoint**.
+2. **Lightsail instance** — Linux/Unix → _OS only_ → Ubuntu 24.04 LTS, 2 GB plan, name
+   `ticketing`. Then _Networking_: create and attach a **static IP**, and add a firewall rule
+   for **HTTPS (443)** (22 and 80 are open by default).
+3. **VPC peering** — Lightsail → Account → _Advanced_ → _Enable VPC peering_ for Singapore.
+   This connects Lightsail to the default VPC, where RDS lives.
+4. **RDS security group** — EC2 → Security Groups → `ticketing-rds` → inbound rules: replace the
+   default rule with _PostgreSQL (5432)_ from `172.26.0.0/16` (the Lightsail CIDR) only.
+5. **Prepare the instance** — Lightsail → instance → _Connect using SSH_ (browser terminal):
    ```bash
    curl -fsSL https://get.docker.com | sudo sh
    sudo usermod -aG docker ubuntu && newgrp docker
    sudo mkdir -p /opt/ticketing && sudo chown ubuntu:ubuntu /opt/ticketing
-   nano /opt/ticketing/.env      # from deploy/.env.production.example
-   chmod 600 /opt/ticketing/.env
    ```
-6. **Deploy key** (on your machine):
+6. **Application database user** — the app connects as `ticketing_app`, not the master user.
+   Still in the instance terminal (password: `openssl rand -hex 24`):
+   ```bash
+   docker run --rm -it postgres:17-alpine psql \
+     "postgresql://postgres:<master-password>@<rds-endpoint>:5432/ticketing?sslmode=require"
+   ```
+   ```sql
+   CREATE ROLE ticketing_app LOGIN PASSWORD '<app-password>';
+   GRANT ticketing_app TO postgres;               -- RDS: lets the master hand over ownership
+   ALTER DATABASE ticketing OWNER TO ticketing_app;
+   \q
+   ```
+   A timeout here means step 3 or 4 is wrong.
+7. **Production environment file** — `nano /opt/ticketing/.env`, filled in from
+   [`deploy/.env.production.example`](deploy/.env.production.example), then
+   `chmod 600 /opt/ticketing/.env`. Without a domain, use `<static-ip-with-dashes>.sslip.io` as
+   the host (e.g. `13-250-1-2.sslip.io`) so Caddy can get a Let's Encrypt certificate.
+   `deploy.sh` downloads the Amazon RDS CA bundle on first deploy so Node can verify the
+   database certificate.
+8. **Deploy key** — on your machine:
    ```bash
    ssh-keygen -t ed25519 -f lightsail_deploy -N "" -C "github-actions-deploy"
-   ssh-copy-id -i lightsail_deploy.pub ubuntu@<static-ip>   # or append to ~/.ssh/authorized_keys
-   ssh-keyscan <static-ip>                                  # → LIGHTSAIL_KNOWN_HOSTS
+   ssh-keyscan <static-ip> > lightsail_known_hosts
    ```
-7. Add the [repository configuration](#repository-configuration) above and set
-   `DEPLOY_ENABLED=true`. The next merge to `main` deploys automatically.
+   Append the contents of `lightsail_deploy.pub` to `~/.ssh/authorized_keys` on the instance
+   (browser terminal), then check `ssh -i lightsail_deploy ubuntu@<static-ip>` works.
+9. **Repository configuration** (see [above](#repository-configuration)), with the `gh` CLI:
+   ```bash
+   gh secret set LIGHTSAIL_HOST --body "<static-ip>"
+   gh secret set LIGHTSAIL_USER --body "ubuntu"
+   gh secret set LIGHTSAIL_SSH_KEY < lightsail_deploy
+   gh secret set LIGHTSAIL_KNOWN_HOSTS < lightsail_known_hosts
+   gh variable set PRODUCTION_URL --body "https://<static-ip-with-dashes>.sslip.io"
+   gh variable set DEPLOY_ENABLED --body "true"
+   ```
+   Then delete the local key files. The next merge to `main` deploys automatically. To deploy
+   the current `main` straight away: Actions → _CD Pipeline_ → _Run workflow_ → latest SHA.
 
 **Rollback:** Actions → _CD Pipeline_ → _Run workflow_ → enter an earlier commit SHA.
 

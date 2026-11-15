@@ -14,6 +14,15 @@ cd "$(dirname "$0")"
 COMPOSE="docker compose -f docker-compose.prod.yml"
 STATE_FILE=.last_successful_image
 
+# Amazon RDS CA bundle, mounted into app + worker so Node can verify the database's
+# TLS certificate. Fetched once; delete the file to refresh it after a CA rotation.
+RDS_CA=rds-ca.pem
+if [[ ! -s "$RDS_CA" ]]; then
+  echo "▶ Downloading Amazon RDS CA bundle"
+  curl -fsSL -o "$RDS_CA.tmp" https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
+  mv "$RDS_CA.tmp" "$RDS_CA"
+fi
+
 deploy_image() {
   export APP_IMAGE="$1"
   echo "▶ Deploying $APP_IMAGE"
