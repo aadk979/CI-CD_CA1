@@ -96,6 +96,35 @@ test.describe('Seat holds (SCRUM-31, SCRUM-32)', () => {
     await Promise.all([ada.context().close(), bo.context().close()]);
   });
 
+  test('fans already looking at the map see holds and releases live, without reloading (SCRUM-38)', async ({
+    browser,
+  }) => {
+    const ada = await signedInFan(browser, 'Ada');
+    const bo = await signedInFan(browser, 'Bo');
+    await Promise.all([ada.goto(EVENT_PATH), bo.goto(EVENT_PATH)]);
+    await expect(bo.getByTestId('seat-map')).toHaveAttribute('data-live', 'true');
+
+    const label = await floor(ada)
+      .locator('button[data-state="available"]')
+      .first()
+      .getAttribute('aria-label');
+    // Bo has picked the same seat but not held it yet.
+    await seat(bo, label!).click();
+    await expect(seat(bo, label!)).toHaveAttribute('data-state', 'selected');
+
+    await seat(ada, label!).click();
+    await ada.getByRole('button', { name: 'Hold seats' }).click();
+
+    // Within a second, Bo's seat greys out and drops from his selection.
+    await expect(seat(bo, label!)).toHaveAttribute('data-state', 'unavailable', { timeout: 1000 });
+    await expect(bo.getByTestId('selection-summary')).toHaveText(/^Select up to 6 seats/);
+
+    await ada.getByRole('button', { name: 'Release seats' }).click();
+    await expect(seat(bo, label!)).toHaveAttribute('data-state', 'available', { timeout: 1000 });
+
+    await Promise.all([ada.context().close(), bo.context().close()]);
+  });
+
   test('a fan cannot select more than 6 seats', async ({ browser }) => {
     const fan = await signedInFan(browser, 'Cy');
     await fan.goto(EVENT_PATH);
