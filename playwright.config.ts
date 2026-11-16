@@ -8,6 +8,8 @@ loadEnv();
 const PORT = Number(process.env.PORT ?? 3100);
 const baseURL = `http://localhost:${PORT}`;
 const isCI = !!process.env.CI;
+// Admit 1 fan per second, so tests can watch a queue move without waiting long.
+const WAITING_ROOM = { WAITING_ROOM_BATCH_SIZE: '1', WAITING_ROOM_INTERVAL_MS: '1000' };
 
 export default defineConfig({
   testDir: 'e2e',
@@ -37,6 +39,7 @@ export default defineConfig({
         PORT: String(PORT),
         BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET!,
         BETTER_AUTH_URL: baseURL,
+        ...WAITING_ROOM,
       },
     },
     {
@@ -48,6 +51,7 @@ export default defineConfig({
       env: {
         DATABASE_URL: process.env.DATABASE_URL!,
         REDIS_URL: process.env.REDIS_URL!,
+        ...WAITING_ROOM,
       },
     },
   ],

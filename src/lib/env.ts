@@ -5,6 +5,10 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   REDIS_URL: z.string().min(1, 'REDIS_URL is required'),
   PORT: z.coerce.number().int().positive().default(3000),
+  /** Waiting room: how many queued fans the worker admits per tick (SCRUM-35). */
+  WAITING_ROOM_BATCH_SIZE: z.coerce.number().int().min(1).max(10_000).default(50),
+  /** Waiting room: how often the worker admits the next batch, in milliseconds. */
+  WAITING_ROOM_INTERVAL_MS: z.coerce.number().int().min(500).max(600_000).default(10_000),
 });
 
 export type Env = z.infer<typeof envSchema>;

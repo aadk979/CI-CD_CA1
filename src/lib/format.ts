@@ -22,3 +22,17 @@ export function formatCountdown(ms: number): string {
   const minutes = Math.floor(totalSeconds / 60);
   return `${minutes}:${String(totalSeconds % 60).padStart(2, '0')}`;
 }
+
+/** Rough wait for someone at `position` in a queue: one batch is admitted every interval. */
+export function estimateWaitMs(position: number, batchSize: number, intervalMs: number): number {
+  if (position <= 0) return 0;
+  return Math.ceil(position / batchSize) * intervalMs;
+}
+
+/** A queue wait in words: 0 → "any moment now", 45_000 → "less than a minute", 90_000 → "about 2 minutes". */
+export function formatWait(ms: number): string {
+  if (ms <= 0) return 'any moment now';
+  if (ms < 60_000) return 'less than a minute';
+  const minutes = Math.ceil(ms / 60_000);
+  return `about ${minutes} minute${minutes === 1 ? '' : 's'}`;
+}

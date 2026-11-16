@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { broadcastSeats } from '@/server/broadcast';
+import { broadcastQueue, broadcastSeats } from '@/server/broadcast';
 
 function fakeEmitter() {
   const emit = vi.fn();
@@ -27,5 +27,29 @@ describe('broadcastSeats', () => {
     broadcastSeats(emitter, 'evt1', [], 'available');
 
     expect(to).not.toHaveBeenCalled();
+  });
+});
+
+describe('broadcastQueue', () => {
+  it("sends the queue's progress to that event's waiting room only", () => {
+    const { emitter, to, emit } = fakeEmitter();
+
+    broadcastQueue(emitter, { eventId: 'evt1', servedThrough: 100, waiting: 42 });
+
+    expect(to).toHaveBeenCalledWith('queue:evt1');
+    expect(emit).toHaveBeenCalledWith('queue:update', {
+      eventId: 'evt1',
+      servedThrough: 100,
+      waiting: 42,
+    });
+  });
+
+  it('sends only the public numbers, never who was admitted', () => {
+    const { emitter, emit } = fakeEmitter();
+    const batch = { eventId: 'evt1', servedThrough: 2, waiting: 0, admitted: ['usr1', 'usr2'] };
+
+    broadcastQueue(emitter, batch);
+
+    expect(emit.mock.calls[0][1]).not.toHaveProperty('admitted');
   });
 });

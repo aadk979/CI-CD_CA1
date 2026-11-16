@@ -40,6 +40,7 @@ export interface SeatMap {
     description: string | null;
     startsAt: Date;
     status: EventStatus;
+    waitingRoom: boolean;
   };
   venue: { id: string; name: string; city: string };
   totalSeats: number;
@@ -149,6 +150,7 @@ export async function getSeatMap(prisma: PrismaClient, slug: string): Promise<Se
       description: true,
       startsAt: true,
       status: true,
+      waitingRoom: true,
       venue: {
         select: {
           id: true,
@@ -203,6 +205,7 @@ export async function getSeatMap(prisma: PrismaClient, slug: string): Promise<Se
       description: event.description,
       startsAt: event.startsAt,
       status: event.status,
+      waitingRoom: event.waitingRoom,
     },
     venue: { id: event.venue.id, name: event.venue.name, city: event.venue.city },
     totalSeats,

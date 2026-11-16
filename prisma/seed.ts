@@ -24,6 +24,14 @@ const EVENTS = [
     daysAhead: 30,
     prices: { FLR: ['Premium', 9800], LB: ['Standard', 6800], UB: ['Standard', 6800] },
   },
+  {
+    // High-demand on-sale: fans queue in the virtual waiting room first.
+    slug: 'aurora-world-tour',
+    title: 'Aurora World Tour',
+    daysAhead: 45,
+    waitingRoom: true,
+    prices: { FLR: ['VIP', 32800], LB: ['Category 1', 22800], UB: ['Category 2', 12800] },
+  },
 ] as const;
 
 async function main() {
@@ -40,12 +48,14 @@ async function main() {
   const sections = await prisma.section.findMany({ where: { venueId: venue.id } });
 
   for (const e of EVENTS) {
+    const waitingRoom = 'waitingRoom' in e && e.waitingRoom;
     const event = await prisma.event.upsert({
       where: { slug: e.slug },
-      update: {},
+      update: { waitingRoom },
       create: {
         slug: e.slug,
         title: e.title,
+        waitingRoom,
         status: 'ON_SALE',
         startsAt: new Date(Date.now() + e.daysAhead * 24 * 60 * 60 * 1000),
         venueId: venue.id,

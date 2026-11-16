@@ -208,6 +208,18 @@ export async function releaseExpiredHolds(
   return [...byEvent].map(([id, seats]) => ({ eventId: id, seatIds: seats }));
 }
 
+/** Does this fan have seats in their cart for this event right now? */
+export async function hasActiveHold(
+  prisma: PrismaClient,
+  { eventId, userId, now = new Date() }: { eventId: string; userId: string; now?: Date },
+): Promise<boolean> {
+  const hold = await prisma.seatReservation.findFirst({
+    where: { eventId, userId, ...activeHold(now) },
+    select: { id: true },
+  });
+  return hold !== null;
+}
+
 /** Which seats of an event are taken, and which ones this user is holding. */
 export async function getSeatAvailability(
   prisma: PrismaClient,

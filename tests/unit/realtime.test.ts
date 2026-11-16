@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { eventRoom, isValidEventId } from '@/lib/realtime';
+import { eventRoom, isValidEventId, queueRoom } from '@/lib/realtime';
 
 describe('eventRoom', () => {
   it('namespaces the room by event id', () => {
     expect(eventRoom('abc')).toBe('event:abc');
+  });
+});
+
+describe('queueRoom', () => {
+  it('is separate from the seat-map room, so seat viewers get no queue traffic', () => {
+    expect(queueRoom('abc')).toBe('queue:abc');
+    expect(queueRoom('abc')).not.toBe(eventRoom('abc'));
   });
 });
 
