@@ -1,6 +1,12 @@
 import { Emitter } from '@socket.io/redis-emitter';
 import { createRedis } from '@/lib/redis';
-import { eventRoom, type SeatsUpdatePayload, type ServerToClientEvents } from '@/lib/realtime';
+import {
+  eventRoom,
+  queueRoom,
+  type QueueUpdatePayload,
+  type SeatsUpdatePayload,
+  type ServerToClientEvents,
+} from '@/lib/realtime';
 
 /** The part of a Socket.IO emitter (or server) that broadcasting needs. */
 export interface RoomEmitter {
@@ -19,6 +25,21 @@ export function broadcastSeats(
 ): void {
   if (seatIds.length === 0) return;
   emitter.to(eventRoom(eventId)).emit('seats:update', { eventId, seatIds, status });
+}
+
+export interface QueueEmitter {
+  to(room: string): { emit(event: 'queue:update', payload: QueueUpdatePayload): unknown };
+}
+
+/**
+ * Tell everyone waiting in an event's queue how far it has moved. One message serves the
+ * whole queue: each browser derives its own position from `servedThrough`.
+ */
+export function broadcastQueue(
+  emitter: QueueEmitter,
+  { eventId, servedThrough, waiting }: QueueUpdatePayload,
+): void {
+  emitter.to(queueRoom(eventId)).emit('queue:update', { eventId, servedThrough, waiting });
 }
 
 const globalForEmitter = globalThis as unknown as {

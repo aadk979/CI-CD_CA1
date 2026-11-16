@@ -22,6 +22,11 @@ async function UpcomingEvents() {
           <Link href={`/events/${event.slug}`} className="font-medium hover:underline">
             {event.title}
           </Link>
+          {event.waitingRoom && (
+            <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-900/40 dark:text-amber-200">
+              Waiting room
+            </span>
+          )}
           <p className="text-sm text-zinc-500">
             {formatEventDate(event.startsAt)} · {event.venueName}, {event.city}
           </p>

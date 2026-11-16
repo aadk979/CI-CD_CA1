@@ -36,6 +36,29 @@ describe('parseEnv', () => {
     else expect(run).toThrow('PORT');
   });
 
+  it('defaults the waiting room to 50 fans every 10 seconds', () => {
+    const env = parseEnv(valid);
+    expect(env.WAITING_ROOM_BATCH_SIZE).toBe(50);
+    expect(env.WAITING_ROOM_INTERVAL_MS).toBe(10_000);
+  });
+
+  // Boundary values: at least 1 fan per batch, and ticks no faster than every 500 ms.
+  it.each([
+    ['WAITING_ROOM_BATCH_SIZE', '0', false],
+    ['WAITING_ROOM_BATCH_SIZE', '1', true],
+    ['WAITING_ROOM_BATCH_SIZE', '10000', true],
+    ['WAITING_ROOM_BATCH_SIZE', '10001', false],
+    ['WAITING_ROOM_BATCH_SIZE', '2.5', false],
+    ['WAITING_ROOM_INTERVAL_MS', '499', false],
+    ['WAITING_ROOM_INTERVAL_MS', '500', true],
+    ['WAITING_ROOM_INTERVAL_MS', '600000', true],
+    ['WAITING_ROOM_INTERVAL_MS', '600001', false],
+  ])('%s=%s valid=%s', (name, value, ok) => {
+    const run = () => parseEnv({ ...valid, [name]: value });
+    if (ok) expect(run).not.toThrow();
+    else expect(run).toThrow(name);
+  });
+
   it('rejects an unknown NODE_ENV', () => {
     expect(() => parseEnv({ ...valid, NODE_ENV: 'staging' })).toThrow('NODE_ENV');
   });

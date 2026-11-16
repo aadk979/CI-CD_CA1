@@ -81,6 +81,9 @@ model Event {
   description  String?
   startsAt     DateTime
   status       EventStatus       @default(DRAFT)
+  /// High-demand on-sale: fans queue in a virtual waiting room and are admitted in
+  /// batches before they can pick seats (SCRUM-34/35/36).
+  waitingRoom  Boolean           @default(false)
   venueId      String
   venue        Venue             @relation(fields: [venueId], references: [id])
   priceTiers   PriceTier[]

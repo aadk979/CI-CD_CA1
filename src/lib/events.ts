@@ -7,6 +7,16 @@ export interface EventSummary {
   startsAt: Date;
   venueName: string;
   city: string;
+  /** High-demand on-sale: fans queue in a waiting room first. */
+  waitingRoom: boolean;
+}
+
+/** Tickets can be bought: the event is on sale and hasn't started yet. */
+export function isOnSale(
+  event: { status: string; startsAt: Date },
+  now: Date = new Date(),
+): boolean {
+  return event.status === 'ON_SALE' && event.startsAt > now;
 }
 
 /** Upcoming events that are on sale, soonest first. */
@@ -28,5 +38,6 @@ export async function listUpcomingEvents(
     startsAt: e.startsAt,
     venueName: e.venue.name,
     city: e.venue.city,
+    waitingRoom: e.waitingRoom,
   }));
 }

@@ -6,10 +6,14 @@
 import { loadEnv } from '@/lib/load-env';
 import { Emitter } from '@socket.io/redis-emitter';
 import { Worker } from 'bullmq';
+import { ACCESS_PASS_TTL_MS } from '@/lib/config';
 import { disconnectPrisma, getPrisma } from '@/lib/db';
+import { getEnv } from '@/lib/env';
 import type { ServerToClientEvents } from '@/lib/realtime';
 import { createRedis } from '@/lib/redis';
-import { broadcastSeats } from '@/server/broadcast';
+import { admitFromAllQueues } from '@/lib/waiting-room';
+import { broadcastQueue, broadcastSeats } from '@/server/broadcast';
+import { createAdmitQueueProcessor } from '@/server/jobs/admit-queue';
 import { HEARTBEAT_INTERVAL_MS, createHeartbeatProcessor } from '@/server/jobs/heartbeat';
 import {
   HOLD_SWEEP_INTERVAL_MS,
@@ -79,7 +83,40 @@ async function main() {
     { connection: createRedis() },
   );
 
-  for (const worker of [systemWorker, holdsWorker]) {
+  // Waiting room (SCRUM-35): every interval, admit the next batch of every event's queue.
+  const { WAITING_ROOM_BATCH_SIZE, WAITING_ROOM_INTERVAL_MS } = getEnv();
+  const waitingRoomQueue = createQueue(QUEUE_NAMES.waitingRoom, redis);
+  await waitingRoomQueue.upsertJobScheduler(
+    JOB_NAMES.admitQueue,
+    { every: WAITING_ROOM_INTERVAL_MS },
+    // A missed tick is simply covered by the next one, so don't retry or keep history.
+    { name: JOB_NAMES.admitQueue, opts: { attempts: 1, removeOnComplete: true } },
+  );
+
+  const admitQueue = createAdmitQueueProcessor({
+    admit: (options) => admitFromAllQueues(redis, options),
+    batchSize: WAITING_ROOM_BATCH_SIZE,
+    passTtlMs: ACCESS_PASS_TTL_MS,
+    onAdmitted: (batch) => {
+      console.log(`Admitted ${batch.admitted.length} fan(s) to event ${batch.eventId}`);
+      broadcastQueue(emitter, batch);
+    },
+  });
+
+  const waitingRoomWorker = new Worker(
+    QUEUE_NAMES.waitingRoom,
+    async (job) => {
+      switch (job.name) {
+        case JOB_NAMES.admitQueue:
+          return admitQueue();
+        default:
+          throw new Error(`Unknown job "${job.name}" on queue "${QUEUE_NAMES.waitingRoom}"`);
+      }
+    },
+    { connection: createRedis() },
+  );
+
+  for (const worker of [systemWorker, holdsWorker, waitingRoomWorker]) {
     worker.on('failed', (job, err) => {
       console.error(`Job ${job?.name}#${job?.id} failed:`, err.message);
     });
@@ -89,8 +126,8 @@ async function main() {
 
   const shutdown = async (signal: string) => {
     console.log(`${signal} received — draining worker`);
-    await Promise.all([systemWorker.close(), holdsWorker.close()]); // waits for in-flight jobs
-    await Promise.all([systemQueue.close(), holdsQueue.close()]);
+    await Promise.all([systemWorker.close(), holdsWorker.close(), waitingRoomWorker.close()]); // waits for in-flight jobs
+    await Promise.all([systemQueue.close(), holdsQueue.close(), waitingRoomQueue.close()]);
     await Promise.allSettled([redis.quit(), disconnectPrisma()]);
     process.exit(0);
   };

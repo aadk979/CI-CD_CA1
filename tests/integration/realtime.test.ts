@@ -9,11 +9,13 @@ import {
   SOCKET_PATH,
   eventRoom,
   type ClientToServerEvents,
+  type QueueUpdatePayload,
   type SeatsUpdatePayload,
   type ServerToClientEvents,
 } from '@/lib/realtime';
 import { createRedis } from '@/lib/redis';
-import { broadcastSeats, getEmitter } from '@/server/broadcast';
+import { joinQueue, getQueueStats, ACTIVE_QUEUES_KEY } from '@/lib/waiting-room';
+import { broadcastQueue, broadcastSeats, getEmitter } from '@/server/broadcast';
 import { HEARTBEAT_KEY, createHeartbeatProcessor } from '@/server/jobs/heartbeat';
 import { JOB_NAMES, QUEUE_NAMES, createQueue } from '@/server/queues';
 import { createSocketServer, type SocketServer } from '@/server/socket';
@@ -49,7 +51,13 @@ describe('realtime pipeline (Socket.IO + Redis adapter + BullMQ)', () => {
   beforeAll(async () => {
     httpServer = createServer();
     const pubClient = redis();
-    io = createSocketServer(httpServer, { redis: { pubClient, subClient: redis() } });
+    io = createSocketServer(httpServer, {
+      redis: { pubClient, subClient: redis() },
+      queueStats: async (eventId) => {
+        if (eventId === 'evt-broken') throw new Error('Redis down');
+        return getQueueStats(pubClient, eventId);
+      },
+    });
     await new Promise<void>((resolve) => httpServer.listen(0, resolve));
     url = `http://localhost:${(httpServer.address() as AddressInfo).port}`;
   });
@@ -153,7 +161,82 @@ describe('realtime pipeline (Socket.IO + Redis adapter + BullMQ)', () => {
     expect(leaked).toEqual([]);
   });
 
+  /** Emit `queue:watch` and resolve with the server's acknowledgement. */
+  const watch = (socket: ClientSocket, eventId: string) =>
+    new Promise<QueueUpdatePayload | null>((resolve) =>
+      socket.emit('queue:watch', eventId, resolve),
+    );
+
+  it('a fan who starts watching a queue is sent its current numbers straight away (SCRUM-36)', async () => {
+    const conn = redis();
+    const eventId = 'evt-queue-ack';
+    await conn.del(`waitroom:{${eventId}}:queue`, `waitroom:{${eventId}}:seq`);
+    await joinQueue(conn, eventId, 'ada');
+    await joinQueue(conn, eventId, 'bo');
+
+    const ack = await watch(await client(), eventId);
+
+    expect(ack).toEqual({ eventId, servedThrough: 0, waiting: 2 });
+    await conn.del(`waitroom:{${eventId}}:queue`, `waitroom:{${eventId}}:seq`);
+    await conn.srem(ACTIVE_QUEUES_KEY, eventId);
+  });
+
+  it('queue progress reaches fans in that queue within 1 second, and not seat-map viewers', async () => {
+    const waiting = await client();
+    const seatViewer = await client();
+    await watch(waiting, 'evt-q');
+    seatViewer.emit('event:join', 'evt-q');
+    await new Promise((r) => setTimeout(r, 100));
+
+    const leaked: QueueUpdatePayload[] = [];
+    seatViewer.on('queue:update', (p) => leaked.push(p));
+    const received = new Promise<QueueUpdatePayload>((resolve) =>
+      waiting.on('queue:update', resolve),
+    );
+
+    const sentAt = Date.now();
+    broadcastQueue(getEmitter(), { eventId: 'evt-q', servedThrough: 50, waiting: 7 });
+    const update = await received;
+    const latency = Date.now() - sentAt;
+    await new Promise((r) => setTimeout(r, 100));
+
+    expect(update).toEqual({ eventId: 'evt-q', servedThrough: 50, waiting: 7 });
+    expect(latency).toBeLessThan(1000);
+    expect(leaked).toEqual([]);
+  });
+
+  it('acknowledges bad room names and Redis failures with null instead of hanging', async () => {
+    const socket = await client();
+
+    expect(await watch(socket, 'bad room!')).toBeNull();
+    expect(await watch(socket, 'evt-broken')).toBeNull();
+    // Unwatching leaves the room; an invalid unwatch is ignored.
+    socket.emit('queue:unwatch', 'evt-broken');
+    socket.emit('queue:unwatch', '' as string);
+    await new Promise((r) => setTimeout(r, 100));
+    const [server] = await io.in(socket.id!).fetchSockets();
+    expect([...server.rooms]).toEqual([socket.id]);
+  });
+
   it('getEmitter reuses one Redis publisher per process', () => {
     expect(getEmitter()).toBe(getEmitter());
+  });
+});
+
+describe('socket server without queue stats configured', () => {
+  it('still lets fans watch a queue, acknowledging with null', async () => {
+    const httpServer = createServer();
+    const io = createSocketServer(httpServer);
+    await new Promise<void>((resolve) => httpServer.listen(0, resolve));
+    const url = `http://localhost:${(httpServer.address() as AddressInfo).port}`;
+    const socket: ClientSocket = connect(url, { path: SOCKET_PATH, transports: ['websocket'] });
+
+    const ack = await new Promise((resolve) => socket.emit('queue:watch', 'evt-1', resolve));
+    socket.emit('queue:watch', 'evt-1'); // no callback: nothing to acknowledge
+    await new Promise((r) => setTimeout(r, 100));
+
+    expect(ack).toBeNull();
+    socket.disconnect();
+    await io.close();
   });
 });

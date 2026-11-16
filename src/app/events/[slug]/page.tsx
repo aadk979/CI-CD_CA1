@@ -1,11 +1,15 @@
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { Suspense } from 'react';
+import { HoldCountdown } from '@/components/seats/hold-countdown';
 import { SeatPicker } from '@/components/seats/seat-picker';
 import { MAX_SEATS_PER_ORDER } from '@/lib/config';
 import { getPrisma } from '@/lib/db';
+import { getShopAccess } from '@/lib/event-access';
+import { isOnSale } from '@/lib/events';
 import { formatEventDate, formatPrice } from '@/lib/format';
 import { getSeatAvailability } from '@/lib/holds';
+import { getRedis } from '@/lib/redis';
 import { getSeatMap, type SeatMapSection } from '@/lib/seating';
 import { getCurrentUser } from '@/server/session';
 
@@ -24,9 +28,15 @@ async function EventDetails({ params }: Pick<PageProps<'/events/[slug]'>, 'param
   const [map, user] = await Promise.all([getSeatMap(prisma, slug), getCurrentUser()]);
   if (!map) notFound();
 
+  const onSale = isOnSale(map.event);
+  // High-demand on-sale: only fans admitted from the waiting room get to the seat map.
+  const access = onSale
+    ? await getShopAccess({ prisma, redis: getRedis() }, { event: map.event, userId: user?.id })
+    : null;
+  if (access && !access.allowed) redirect(`/events/${slug}/queue`);
+
   // Availability is live data: read it on every request (never cached).
   const availability = await getSeatAvailability(prisma, map.event.id, { userId: user?.id });
-  const onSale = map.event.status === 'ON_SALE' && map.event.startsAt > new Date();
   const tiers = priceList(map.sections);
 
   return (
@@ -50,6 +60,16 @@ async function EventDetails({ params }: Pick<PageProps<'/events/[slug]'>, 'param
           </ul>
         )}
       </header>
+
+      {access?.via === 'pass' && (
+        <p
+          className="mb-6 rounded-md bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200"
+          data-testid="access-pass"
+        >
+          You&apos;re in! Pick your seats before your turn ends in{' '}
+          <HoldCountdown expiresAt={access.passExpiresAt.toISOString()} testId="pass-countdown" />.
+        </p>
+      )}
 
       {!onSale && (
         <p className="mb-6 rounded-md bg-zinc-100 px-4 py-3 text-sm dark:bg-zinc-900">

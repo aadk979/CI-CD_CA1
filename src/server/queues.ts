@@ -7,6 +7,8 @@ export const QUEUE_NAMES = {
   system: 'system',
   /** Seat holds: release each cart when its timer runs out, plus a periodic sweep. */
   holds: 'holds',
+  /** Virtual waiting room: admit the next batch of queued fans on a fixed interval. */
+  waitingRoom: 'waiting-room',
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
@@ -15,6 +17,7 @@ export const JOB_NAMES = {
   heartbeat: 'heartbeat',
   releaseHolds: 'release-holds',
   sweepHolds: 'sweep-holds',
+  admitQueue: 'admit-queue',
 } as const;
 
 export function createQueue(name: QueueName, connection: ConnectionOptions): Queue {

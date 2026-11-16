@@ -11,6 +11,7 @@ import { loadEnv } from '@/lib/load-env';
 import next from 'next';
 import { getEnv } from '@/lib/env';
 import { createRedis } from '@/lib/redis';
+import { getQueueStats } from '@/lib/waiting-room';
 import { createSocketServer } from '@/server/socket';
 
 const dev = process.env.NODE_ENV !== 'production';
@@ -30,7 +31,10 @@ async function main() {
 
   const pubClient = createRedis();
   const subClient = pubClient.duplicate();
-  const io = createSocketServer(httpServer, { redis: { pubClient, subClient } });
+  const io = createSocketServer(httpServer, {
+    redis: { pubClient, subClient },
+    queueStats: (eventId) => getQueueStats(pubClient, eventId),
+  });
 
   // 0.0.0.0 so the reverse proxy (Caddy) / container network can reach us.
   httpServer.listen(PORT, '0.0.0.0', () => {

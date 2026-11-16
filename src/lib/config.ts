@@ -10,3 +10,9 @@ export const PASSWORD_MAX = 72;
 export const HOLD_DURATION_MS = 10 * 60 * 1000;
 /** Most seats one fan can hold (or buy) for one event at a time. */
 export const MAX_SEATS_PER_ORDER = 6;
+
+/**
+ * How long a fan admitted from the waiting room may shop before the pass lapses.
+ * Longer than a hold, so a fan admitted late in the window can still finish a 10-minute cart.
+ */
+export const ACCESS_PASS_TTL_MS = 15 * 60 * 1000;

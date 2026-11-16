@@ -50,7 +50,9 @@ delivered through a fully automated CI/CD pipeline to **AWS Lightsail + RDS**.
 - **worker** — a separate process ([worker.ts](worker.ts)) consuming BullMQ queues: seat-hold
   expiry, waiting-room admission, heartbeats. It pushes real-time updates to browsers through the
   Socket.IO **Redis emitter**, so it never needs to talk to the web process directly.
-- **Redis** — BullMQ job storage and Socket.IO pub/sub.
+- **Redis** — BullMQ job storage, Socket.IO pub/sub, and the virtual waiting room: a
+  first-come-first-served queue per high-demand event, admitted in batches by the worker
+  (`WAITING_ROOM_BATCH_SIZE` fans every `WAITING_ROOM_INTERVAL_MS`; defaults 50 every 10 s).
 - **PostgreSQL** — system of record (Docker locally, RDS in production), accessed via Prisma 7.
 
 One Docker image runs both roles; CI builds it once per commit and CD deploys that exact image.
@@ -73,18 +75,19 @@ One Docker image runs both roles; CI builds it once per commit and CD deploys th
 
 ## Next.js patterns demonstrated
 
-| Pattern                                    | Where                                                                      |
-| ------------------------------------------ | -------------------------------------------------------------------------- |
-| File-system routing & nested layouts       | `src/app/**` (`layout.tsx`, `page.tsx`)                                    |
-| Dynamic segments + `notFound()`            | `src/app/events/[slug]/` — event page, params awaited inside `<Suspense>`  |
-| React Server Components + streaming        | `src/app/page.tsx` — DB query in a server component, `<Suspense>`          |
-| Partial Prerendering (Cache Components)    | `next.config.ts` `cacheComponents` — static shell, dynamic holes           |
-| Route Handlers                             | `src/app/api/health/route.ts`                                              |
-| Server Actions + `useActionState`          | `src/app/actions/auth.ts` — register / log in / log out forms              |
-| Server Actions + `refresh()`               | `src/app/actions/holds.ts` — hold / release seats, re-render in one trip   |
-| Streaming per-request data in `<Suspense>` | `src/app/layout.tsx` — the signed-in user menu streams into a static shell |
-| Proxy (formerly Middleware)                | `src/proxy.ts` — optimistic route protection (Sprint 2)                    |
-| Custom server                              | `server.ts` — Socket.IO alongside the Next.js handler                      |
+| Pattern                                    | Where                                                                               |
+| ------------------------------------------ | ----------------------------------------------------------------------------------- |
+| File-system routing & nested layouts       | `src/app/**` (`layout.tsx`, `page.tsx`)                                             |
+| Dynamic segments + `notFound()`            | `src/app/events/[slug]/` — event page, params awaited inside `<Suspense>`           |
+| React Server Components + streaming        | `src/app/page.tsx` — DB query in a server component, `<Suspense>`                   |
+| Partial Prerendering (Cache Components)    | `next.config.ts` `cacheComponents` — static shell, dynamic holes                    |
+| Route Handlers                             | `src/app/api/health/route.ts`                                                       |
+| Server Actions + `useActionState`          | `src/app/actions/auth.ts` — register / log in / log out forms                       |
+| Server Actions + `refresh()`               | `src/app/actions/holds.ts` — hold / release seats, re-render in one trip            |
+| `redirect()` from a streamed component     | `src/app/events/[slug]/page.tsx` — fans without a queue pass go to the waiting room |
+| Streaming per-request data in `<Suspense>` | `src/app/layout.tsx` — the signed-in user menu streams into a static shell          |
+| Proxy (formerly Middleware)                | `src/proxy.ts` — optimistic route protection (Sprint 2)                             |
+| Custom server                              | `server.ts` — Socket.IO alongside the Next.js handler                               |
 
 ## Getting started
 

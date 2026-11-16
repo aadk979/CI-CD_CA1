@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { formatCountdown, formatEventDate, formatPrice } from '@/lib/format';
+import {
+  estimateWaitMs,
+  formatCountdown,
+  formatEventDate,
+  formatPrice,
+  formatWait,
+} from '@/lib/format';
 
 // en-SG shows the local currency as "$" and qualifies foreign dollars ("US$").
 describe('formatPrice', () => {
@@ -29,5 +35,32 @@ describe('formatCountdown (boundary values)', () => {
 describe('formatEventDate', () => {
   it('shows the time in Singapore regardless of the server time zone', () => {
     expect(formatEventDate(new Date('2026-12-24T12:00:00Z'))).toMatch(/24 Dec 2026.*8:00\s?pm/i);
+  });
+});
+
+describe('estimateWaitMs (boundary values)', () => {
+  // 50 fans admitted every 10 seconds.
+  it.each([
+    [0, 0], // already admitted
+    [-3, 0],
+    [1, 10_000], // first in line: the next batch
+    [50, 10_000], // last fan of the first batch
+    [51, 20_000], // first fan of the second batch
+    [500, 100_000],
+  ])('position %i → %i ms', (position, expected) => {
+    expect(estimateWaitMs(position, 50, 10_000)).toBe(expected);
+  });
+});
+
+describe('formatWait (boundary values)', () => {
+  it.each([
+    [0, 'any moment now'],
+    [1, 'less than a minute'],
+    [59_999, 'less than a minute'],
+    [60_000, 'about 1 minute'],
+    [60_001, 'about 2 minutes'],
+    [600_000, 'about 10 minutes'],
+  ])('%i ms → %s', (ms, expected) => {
+    expect(formatWait(ms)).toBe(expected);
   });
 });
