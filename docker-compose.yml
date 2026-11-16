@@ -52,7 +52,7 @@ services:
   worker:
     profiles: [app]
     build: .
-    command: ['node', 'dist/worker.js']
+    command: ['node', 'dist/worker.mjs']
     environment:
       DATABASE_URL: postgresql://ticketing:ticketing@postgres:5432/ticketing?schema=public
       REDIS_URL: redis://redis:6379
