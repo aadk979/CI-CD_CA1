@@ -31,6 +31,9 @@ export async function UserMenu() {
         Signed in as{' '}
         <span className="font-medium text-zinc-900 dark:text-zinc-100">{user.name}</span>
       </span>
+      <Link href="/tickets" className={linkClass}>
+        My tickets
+      </Link>
       {/* A real form + Server Action: works without JS and is CSRF-protected by Next. */}
       <form action={logoutAction}>
         <button type="submit" className={linkClass}>

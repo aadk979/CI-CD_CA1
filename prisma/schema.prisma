@@ -46,6 +46,7 @@ model Seat {
   /// Seat number within the row, starting at 1 (CHECK constraint in migration).
   number       Int
   reservations SeatReservation[]
+  tickets      Ticket[]
 
   @@unique([sectionId, row, number])
 }
@@ -88,6 +89,8 @@ model Event {
   venue        Venue             @relation(fields: [venueId], references: [id])
   priceTiers   PriceTier[]
   reservations SeatReservation[]
+  orders       Order[]
+  tickets      Ticket[]
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
 
@@ -121,6 +124,48 @@ model SeatReservation {
   @@index([status, expiresAt])
 }
 
+enum OrderStatus {
+  /// Payment succeeded and the seats were sold to the fan.
+  PAID
+}
+
+/// A completed purchase: one per checkout, for one event (SCRUM-39).
+model Order {
+  id         String      @id @default(cuid())
+  userId     String
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventId    String
+  event      Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  status     OrderStatus @default(PAID)
+  /// Sum of the tickets' prices, in cents (CHECK >= 0 in migration).
+  totalCents Int
+  currency   String      @db.Char(3)
+  /// Reference from the (simulated) payment provider, e.g. "pay_…".
+  paymentRef String      @unique
+  tickets    Ticket[]
+  createdAt  DateTime    @default(now())
+
+  @@index([userId, createdAt])
+}
+
+/// One seat bought in an order. Price and tier are copied at purchase time, so a later
+/// price change never alters what the fan paid.
+model Ticket {
+  id         String @id @default(cuid())
+  orderId    String
+  order      Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  eventId    String
+  event      Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  seatId     String
+  seat       Seat   @relation(fields: [seatId], references: [id], onDelete: Cascade)
+  tierName   String
+  priceCents Int
+
+  /// A seat can be sold once per event (backs up the SeatReservation guarantee).
+  @@unique([eventId, seatId])
+  @@index([orderId])
+}
+
 // ── Authentication (Better Auth) ────────────────────────────────────────────
 // Field names follow Better Auth's core schema; see src/lib/auth.ts.
 
@@ -136,6 +181,7 @@ model User {
   sessions      Session[]
   accounts      Account[]
   reservations  SeatReservation[]
+  orders        Order[]
 }
 
 /// A login session. Deleting the row (log out) invalidates the cookie immediately.

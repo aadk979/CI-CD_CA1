@@ -26,6 +26,8 @@ export interface SeatPickerProps {
   signedIn: boolean;
   onSale: boolean;
   maxSeats: number;
+  /** Where to pay for held seats. */
+  checkoutHref: string;
 }
 
 const SEAT_CLASS: Record<SeatState, string> = {
@@ -63,6 +65,7 @@ export function SeatPicker({
   signedIn,
   onSale,
   maxSeats,
+  checkoutHref,
 }: SeatPickerProps) {
   const [picked, setPicked] = useState<string[]>([]);
   // Result of whichever action ran last (hold or release), shown in the status line.
@@ -208,6 +211,12 @@ export function SeatPicker({
               Holding <strong>{held.length}</strong> seat{held.length === 1 ? '' : 's'} (
               {total(held, seats)}) · expires in <HoldCountdown expiresAt={heldUntil} />
             </p>
+            <Link
+              href={checkoutHref}
+              className="rounded-md bg-emerald-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-600"
+            >
+              Check out
+            </Link>
             <button
               type="submit"
               disabled={releasing}
