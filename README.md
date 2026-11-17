@@ -131,17 +131,21 @@ Run the full production stack in containers instead: `docker compose --profile a
 
 ## Testing strategy
 
-| Level       | Tool       | Scope                                                                                       | Infra                |
-| ----------- | ---------- | ------------------------------------------------------------------------------------------- | -------------------- |
-| Unit        | Vitest     | Pure logic: env + form validation, health aggregation, job processors, auth error mapping   | none (mocks)         |
-| Integration | Vitest     | Real Postgres + Redis: queries, auth (hashing, cookies, logout), Socket.IO, BullMQ → socket | Docker / CI services |
-| E2E         | Playwright | Production build in Chromium: register/login/logout, pages, live socket, worker heartbeat   | Docker / CI services |
+| Level       | Tool       | Scope                                                                                | Infra                |
+| ----------- | ---------- | ------------------------------------------------------------------------------------ | -------------------- |
+| Unit        | Vitest     | Pure logic: validation, card checks, pricing/formatting, env parsing, job processors | none (mocks)         |
+| Integration | Vitest     | Real Postgres + Redis: holds, checkout, waiting room, auth, Socket.IO, BullMQ jobs   | Docker / CI services |
+| E2E         | Playwright | Production build in Chromium: every story's main path, live updates, queue, checkout | Docker / CI services |
+
+The **[test plan](qa/test-plan.md)** sets out scope, environments, entry/exit criteria and risks.
+The **[test case specification](qa/test-cases.md)** lists every case with its equivalence classes
+and boundaries, the user story it traces to, and the automated test that runs it.
 
 - Unit and integration run as two Vitest **projects** in one process, so coverage is **merged**
   and the 80% threshold (statements, branches, functions, lines) applies to the combined result.
 - Integration/E2E use a dedicated `ticketing_test` database and refuse to run against anything else.
-- Test design techniques (equivalence partitioning, boundary values, error guessing) are labelled
-  in the test names — see `tests/unit/realtime.test.ts` and `tests/integration/events.test.ts`.
+- Test design techniques (equivalence partitioning, boundary values, state transition, concurrency,
+  error guessing) are labelled in the test names and in the specification.
 
 ## CI/CD pipeline
 
@@ -284,6 +288,7 @@ issues and two sprints defined in [`scripts/jira/backlog.json`](scripts/jira/bac
 ├── docker/              Local Postgres init (test database)
 ├── e2e/                 Playwright specs
 ├── prisma/              Schema, migrations, seed
+├── qa/                  Test plan and test case specification
 ├── scripts/             esbuild bundling, Jira seeding + issue transitions
 ├── src/
 │   ├── app/             Next.js routes (pages, layouts, route handlers)
