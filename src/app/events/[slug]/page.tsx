@@ -5,6 +5,7 @@ import { HoldCountdown } from '@/components/seats/hold-countdown';
 import { SeatPicker } from '@/components/seats/seat-picker';
 import { MAX_SEATS_PER_ORDER } from '@/lib/config';
 import { getPrisma } from '@/lib/db';
+import { isOrganiser } from '@/lib/account';
 import { getShopAccess } from '@/lib/event-access';
 import { isOnSale } from '@/lib/events';
 import { formatEventDate, formatPrice } from '@/lib/format';
@@ -27,6 +28,9 @@ async function EventDetails({ params }: Pick<PageProps<'/events/[slug]'>, 'param
   const prisma = getPrisma();
   const [map, user] = await Promise.all([getSeatMap(prisma, slug), getCurrentUser()]);
   if (!map) notFound();
+  // Drafts are unpublished: organisers can preview them, everyone else gets a 404.
+  const draft = map.event.status === 'DRAFT';
+  if (draft && !isOrganiser(user)) notFound();
 
   const onSale = isOnSale(map.event);
   // High-demand on-sale: only fans admitted from the waiting room get to the seat map.
@@ -71,10 +75,23 @@ async function EventDetails({ params }: Pick<PageProps<'/events/[slug]'>, 'param
         </p>
       )}
 
-      {!onSale && (
-        <p className="mb-6 rounded-md bg-zinc-100 px-4 py-3 text-sm dark:bg-zinc-900">
-          Tickets for this event are not on sale.
+      {draft ? (
+        <p
+          className="mb-6 rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200"
+          data-testid="draft-preview"
+        >
+          Draft preview: fans can&apos;t see this event until you publish it from the{' '}
+          <Link href="/organiser" className="font-medium underline">
+            organiser page
+          </Link>
+          .
         </p>
+      ) : (
+        !onSale && (
+          <p className="mb-6 rounded-md bg-zinc-100 px-4 py-3 text-sm dark:bg-zinc-900">
+            Tickets for this event are not on sale.
+          </p>
+        )
       )}
 
       <section aria-labelledby="seats-heading">
