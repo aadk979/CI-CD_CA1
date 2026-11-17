@@ -90,6 +90,7 @@ async function EventDetails({ params }: Pick<PageProps<'/events/[slug]'>, 'param
           signedIn={Boolean(user)}
           onSale={onSale}
           maxSeats={MAX_SEATS_PER_ORDER}
+          checkoutHref={`/events/${slug}/checkout`}
         />
       </section>
     </>
