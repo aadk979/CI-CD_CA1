@@ -38,9 +38,22 @@ describe('registerSchema', () => {
     expect(registerSchema.safeParse({ ...valid, email }).success).toBe(false);
   });
 
+  // Boundary value analysis on the 254-character email limit (RFC 5321 path length).
+  it.each([
+    [254, true],
+    [255, false],
+  ])('email of length %i valid=%s', (length, ok) => {
+    const domain = '@example.com';
+    const email = 'a'.repeat(length - domain.length) + domain;
+    expect(email).toHaveLength(length);
+    expect(registerSchema.safeParse({ ...valid, email }).success).toBe(ok);
+  });
+
+  // Boundary value analysis on the 1–100 character name rule (after trimming).
   it.each([
     ['', false],
     ['   ', false],
+    ['x', true],
     ['x'.repeat(100), true],
     ['x'.repeat(101), false],
   ])('name %j valid=%s', (name, ok) => {
