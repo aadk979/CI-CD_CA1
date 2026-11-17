@@ -11,6 +11,9 @@ export interface EventSummary {
   waitingRoom: boolean;
 }
 
+/** Cache tag for the public event list; publishing an event expires it (SCRUM-28). */
+export const EVENTS_CACHE_TAG = 'events';
+
 /** Tickets can be bought: the event is on sale and hasn't started yet. */
 export function isOnSale(
   event: { status: string; startsAt: Date },

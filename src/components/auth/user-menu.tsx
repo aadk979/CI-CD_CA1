@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { logoutAction } from '@/app/actions/auth';
+import { isOrganiser } from '@/lib/account';
 import { getCurrentUser } from '@/server/session';
 
 const linkClass =
@@ -31,6 +32,11 @@ export async function UserMenu() {
         Signed in as{' '}
         <span className="font-medium text-zinc-900 dark:text-zinc-100">{user.name}</span>
       </span>
+      {isOrganiser(user) && (
+        <Link href="/organiser" className={linkClass}>
+          Organiser
+        </Link>
+      )}
       <Link href="/tickets" className={linkClass}>
         My tickets
       </Link>

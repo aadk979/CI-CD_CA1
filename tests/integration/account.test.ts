@@ -9,6 +9,7 @@ import {
 } from '@/lib/account';
 import { createAuth } from '@/lib/auth';
 import { disconnectPrisma, getPrisma } from '@/lib/db';
+import { setUserRole } from '@/lib/organiser';
 import { resetDatabase } from './helpers';
 
 const prisma = getPrisma();
@@ -165,6 +166,7 @@ describe('getSessionUser and logOut', () => {
       id: expect.any(String),
       name: FAN.name,
       email: FAN.email,
+      role: 'FAN',
     });
 
     await logOut(auth, cookie);
@@ -176,6 +178,37 @@ describe('getSessionUser and logOut', () => {
 
   it('logging out without a session is a no-op', async () => {
     await expect(logOut(auth, new Headers())).resolves.toBeUndefined();
+  });
+});
+
+describe('roles (SCRUM-24)', () => {
+  it('everyone signs up as a fan', async () => {
+    await registerAccount(auth, FAN, new Headers());
+    const cookie = cookieHeaderFrom(await signInAndGetCookies());
+    expect((await getSessionUser(auth, cookie))?.role).toBe('FAN');
+  });
+
+  it('sign-up can never grant the organiser role, even if the request asks for it', async () => {
+    // Bypasses our own form validation and goes straight to the auth API, as an attacker would.
+    const body = { ...FAN, role: 'ORGANISER' } as typeof FAN;
+    await auth.api.signUpEmail({ body, headers: new Headers() }).catch(() => undefined);
+    expect(await prisma.user.count({ where: { role: 'ORGANISER' } })).toBe(0);
+  });
+
+  it('granting the role takes effect on the next request, with no need to log in again', async () => {
+    await registerAccount(auth, FAN, new Headers());
+    const cookie = cookieHeaderFrom(await signInAndGetCookies());
+
+    expect(await setUserRole(prisma, '  ADA@example.com ', 'ORGANISER')).toBe(true);
+    expect((await getSessionUser(auth, cookie))?.role).toBe('ORGANISER');
+
+    // Revoking is just as immediate.
+    await setUserRole(prisma, FAN.email, 'FAN');
+    expect((await getSessionUser(auth, cookie))?.role).toBe('FAN');
+  });
+
+  it('reports an unknown email instead of silently doing nothing', async () => {
+    expect(await setUserRole(prisma, 'nobody@example.com', 'ORGANISER')).toBe(false);
   });
 });
 

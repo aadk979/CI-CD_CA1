@@ -87,7 +87,9 @@ One Docker image runs both roles; CI builds it once per commit and CD deploys th
 | Server Actions + `refresh()`                        | `src/app/actions/holds.ts` — hold / release seats, re-render in one trip                        |
 | `redirect()` from a streamed component              | `src/app/events/[slug]/page.tsx` — fans without a queue pass go to the waiting room             |
 | Streaming per-request data in `<Suspense>`          | `src/app/layout.tsx` — the signed-in user menu streams into a static shell                      |
-| Proxy (formerly Middleware)                         | `src/proxy.ts` — optimistic route protection (Sprint 2)                                         |
+| Proxy (formerly Middleware)                         | `src/proxy.ts` — organiser area: visitors redirected to log in, fans answered with a real 403   |
+| `forbidden()` + `forbidden.tsx` (`authInterrupts`)  | `src/server/organiser.ts` — role re-checked in every organiser page and Server Action           |
+| `'use cache'` + `cacheTag` / `updateTag`            | `src/app/page.tsx` caches the event list; `publishEventAction` expires it on publish            |
 | Custom server                                       | `server.ts` — Socket.IO alongside the Next.js handler                                           |
 
 ## Getting started
@@ -107,6 +109,12 @@ npm run dev:worker             # in a second terminal: BullMQ worker
 
 The header shows **Live** once the WebSocket connects and _worker seen hh:mm:ss_ once heartbeats
 arrive from the worker. `GET /api/health` reports database, Redis and worker status.
+
+**Organisers:** everyone signs up as a fan. To manage events, register an account, then run
+`npm run organiser:grant -- you@example.com` (`--revoke` undoes it). The **Organiser** link then
+appears in the header: create an event as a draft at `/organiser/events/new`, preview it, and
+publish it to put it on sale. In production, run the same `UPDATE "User" SET role = 'ORGANISER'
+WHERE email = '…'` against the database.
 
 **Accounts:** `/register` and `/login`. Sessions are stored in Postgres, so logging out (or
 deleting the `Session` row) invalidates the cookie immediately. The session cookie is `HttpOnly`
@@ -128,6 +136,7 @@ Run the full production stack in containers instead: `docker compose --profile a
 | `db:migrate`                        | Create + apply a migration (`-- --name x`), then regenerate the client       |
 | `db:deploy` / `db:seed`             | Apply migrations / seed demo data                                            |
 | `jira:seed`                         | Populate Jira with the backlog and sprints (see below)                       |
+| `organiser:grant`                   | Grant (or `--revoke`) the organiser role: `-- someone@example.com`           |
 
 ## Testing strategy
 

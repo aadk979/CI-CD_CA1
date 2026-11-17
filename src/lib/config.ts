@@ -16,3 +16,8 @@ export const MAX_SEATS_PER_ORDER = 6;
  * Longer than a hold, so a fan admitted late in the window can still finish a 10-minute cart.
  */
 export const ACCESS_PASS_TTL_MS = 15 * 60 * 1000;
+
+/** Create-event form limits (SCRUM-28): shared by server validation and the form. */
+export const TITLE_MAX = 120;
+export const DESCRIPTION_MAX = 2000;
+export const TIER_NAME_MAX = 40;
