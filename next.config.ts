@@ -6,6 +6,10 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
   poweredByHeader: false,
+  experimental: {
+    // forbidden() → 403 with app/forbidden.tsx, for organiser-only pages and actions.
+    authInterrupts: true,
+  },
   turbopack: {
     // Pin the workspace root to this project (ignore stray lockfiles in parent folders).
     root: process.cwd(),

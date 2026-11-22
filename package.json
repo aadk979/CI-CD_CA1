@@ -27,6 +27,7 @@
     "db:seed": "prisma db seed",
     "db:test:prepare": "dotenv -e .env.test -- prisma migrate deploy",
     "jira:seed": "node scripts/jira/seed-jira.mjs",
+    "organiser:grant": "tsx scripts/grant-organiser.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

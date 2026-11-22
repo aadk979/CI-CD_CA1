@@ -5,7 +5,7 @@ import { isValidId, parseHoldInput } from '@/lib/holds';
 const seats = (n: number) => Array.from({ length: n }, (_, i) => `seat${i}`);
 
 describe('isValidId', () => {
-  it.each(['cmh1abc2d0000xyz', 'a', 'A1'.repeat(32)])('accepts %s', (id) => {
+  it.each(['cmh1abc2d0000xyz', 'a', 'A1'.repeat(32), 'seed-venue_arena'])('accepts %s', (id) => {
     expect(isValidId(id)).toBe(true);
   });
 

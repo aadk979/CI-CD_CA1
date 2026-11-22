@@ -20,10 +20,18 @@ export const EMAIL_TAKEN = 'An account with this email already exists.';
 export const TRY_AGAIN = 'Something went wrong. Please try again.';
 export const TOO_MANY_ATTEMPTS = 'Too many attempts. Please wait a moment and try again.';
 
+export type UserRole = 'FAN' | 'ORGANISER';
+
 export interface SessionUser {
   id: string;
   name: string;
   email: string;
+  role: UserRole;
+}
+
+/** Only organisers may create and publish events (SCRUM-24). */
+export function isOrganiser(user: Pick<SessionUser, 'role'> | null | undefined): boolean {
+  return user?.role === 'ORGANISER';
 }
 
 function errorCode(err: unknown): string | undefined {
@@ -98,6 +106,7 @@ export async function logOut(auth: Auth, headers: Headers): Promise<void> {
 export async function getSessionUser(auth: Auth, headers: Headers): Promise<SessionUser | null> {
   const session = await auth.api.getSession({ headers });
   if (!session) return null;
-  const { id, name, email } = session.user;
-  return { id, name, email };
+  const { id, name, email, role } = session.user;
+  // Anything unexpected is treated as the least-privileged role.
+  return { id, name, email, role: role === 'ORGANISER' ? 'ORGANISER' : 'FAN' };
 }
