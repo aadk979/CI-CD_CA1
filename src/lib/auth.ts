@@ -22,6 +22,13 @@ export function createAuth(prisma: PrismaClient, { BETTER_AUTH_SECRET, BETTER_AU
       maxPasswordLength: PASSWORD_MAX,
       autoSignIn: true, // registering logs you straight in
     },
+    user: {
+      additionalFields: {
+        // Part of the session, so one lookup answers "who" and "may they organise".
+        // input: false — sign-up can never set it, whatever the request body says.
+        role: { type: ['FAN', 'ORGANISER'], input: false, required: false, defaultValue: 'FAN' },
+      },
+    },
     session: {
       expiresIn: SESSION_MAX_AGE_SECONDS,
       updateAge: 60 * 60 * 24,

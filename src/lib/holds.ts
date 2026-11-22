@@ -37,9 +37,12 @@ export interface SeatAvailability {
   heldUntil: Date | null;
 }
 
-const ID_PATTERN = /^[a-z0-9]{1,64}$/i;
+const ID_PATTERN = /^[a-z0-9_-]{1,64}$/i;
 
-/** Database ids are cuids: short alphanumeric strings. */
+/**
+ * Database ids are cuids (alphanumeric), or readable seed ids like "seed-venue-arena".
+ * Nothing else gets through: no quotes, dots, slashes or spaces.
+ */
 export function isValidId(value: unknown): value is string {
   return typeof value === 'string' && ID_PATTERN.test(value);
 }
@@ -67,7 +70,8 @@ export function parseHoldInput(
   return { eventId, seatIds: [...new Set(seatIds)] };
 }
 
-function isUniqueViolation(err: unknown): boolean {
+/** A unique index rejected the write (Postgres 23505, Prisma P2002). */
+export function isUniqueViolation(err: unknown): boolean {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002';
 }
 

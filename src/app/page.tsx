@@ -1,15 +1,29 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { cacheLife, cacheTag } from 'next/cache';
 import { connection } from 'next/server';
 import { LiveStatus } from '@/components/live-status';
 import { APP_NAME } from '@/lib/config';
 import { getPrisma } from '@/lib/db';
-import { listUpcomingEvents } from '@/lib/events';
+import { EVENTS_CACHE_TAG, listUpcomingEvents } from '@/lib/events';
 import { formatEventDate } from '@/lib/format';
 
+/**
+ * The public event list is the same for everyone, so it is cached rather than queried on
+ * every visit. Publishing an event expires the tag (SCRUM-28); otherwise it refreshes
+ * within minutes, which also drops events that have since started.
+ */
+async function getUpcomingEvents() {
+  'use cache';
+  cacheTag(EVENTS_CACHE_TAG);
+  cacheLife('minutes');
+  return listUpcomingEvents(getPrisma());
+}
+
 async function UpcomingEvents() {
-  await connection(); // event list is live data — render per request
-  const events = await listUpcomingEvents(getPrisma());
+  // Never at build time: there is no database during `next build`.
+  await connection();
+  const events = await getUpcomingEvents();
 
   if (events.length === 0) {
     return <p className="text-zinc-500">No events on sale yet.</p>;

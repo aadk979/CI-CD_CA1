@@ -21,15 +21,15 @@ behaviour also changes the plan and the cases.
 
 | Epic                   | Stories / tasks under test                                                                                              |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| User Accounts & Access | SCRUM-22 register, SCRUM-23 log in / log out                                                                            |
-| Event Catalogue        | SCRUM-25 browse upcoming events, SCRUM-26 event details                                                                 |
+| User Accounts & Access | SCRUM-22 register, SCRUM-23 log in / log out, SCRUM-24 organiser-only pages                                             |
+| Event Catalogue        | SCRUM-25 browse upcoming events, SCRUM-26 event details, SCRUM-28 organiser creates and publishes events                |
 | Seat Selection & Holds | SCRUM-29 seat model, SCRUM-30 seat map, SCRUM-31 10-minute holds, SCRUM-32 no double booking, SCRUM-33 hold expiry jobs |
 | Virtual Waiting Room   | SCRUM-34 join the queue, SCRUM-35 batch admission, SCRUM-36 live position                                               |
 | Real-time Updates      | SCRUM-37 Socket.IO + Redis adapter, SCRUM-38 live seat availability                                                     |
 | Checkout & Tickets     | SCRUM-39 checkout with simulated payment, SCRUM-40 My tickets                                                           |
 | DevOps                 | Health endpoint, environment validation, Jira transition script, worker heartbeat                                       |
 
-New stories (organiser pages, search, QR tickets, emails) join this table and the case
+New stories (search, QR tickets, emails) join this table and the case
 specification in the PR that delivers them.
 
 ### 2.2 Out of scope
@@ -62,13 +62,13 @@ atomic scripts, and a mock would pass where production fails.
 
 ### 3.2 Test design techniques
 
-| Technique                     | Used for                                                                                                                                                                                                  |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Equivalence partitioning (EP) | Splitting inputs into valid and invalid classes, e.g. card numbers, emails, ids, event states                                                                                                             |
-| Boundary value analysis (BVA) | Every numeric limit is tested at the limit and at one step either side: password 8–72, name 1–100, email ≤254, seats 1–6, card exactly 16 digits, batch size 1–10000, interval 500–600000 ms, countdown 0 |
-| State transition              | Seat FREE → HELD → SOLD / released, queue not-queued → queued → admitted → lapsed                                                                                                                         |
-| Concurrency / race testing    | Simultaneous holds on one seat, 50 simultaneous queue joins, two simultaneous checkouts                                                                                                                   |
-| Error guessing                | Forged cookies, SQL-like and path-traversal ids, a `File` where a string is expected, a job running twice                                                                                                 |
+| Technique                     | Used for                                                                                                                                                                                                                                       |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Equivalence partitioning (EP) | Splitting inputs into valid and invalid classes, e.g. card numbers, emails, ids, event states                                                                                                                                                  |
+| Boundary value analysis (BVA) | Every numeric limit is tested at the limit and at one step either side: password 8–72, name 1–100, email ≤254, event title 1–120, price S$0–10 000, seats 1–6, card exactly 16 digits, batch size 1–10000, interval 500–600000 ms, countdown 0 |
+| State transition              | Seat FREE → HELD → SOLD / released, queue not-queued → queued → admitted → lapsed                                                                                                                                                              |
+| Concurrency / race testing    | Simultaneous holds on one seat, 50 simultaneous queue joins, two simultaneous checkouts                                                                                                                                                        |
+| Error guessing                | Forged cookies, SQL-like and path-traversal ids, a `File` where a string is expected, a job running twice                                                                                                                                      |
 
 Test names say which technique they apply (for example "boundary values"), and each case in the
 [specification](test-cases.md) names its technique and the user story it traces to.
@@ -143,18 +143,19 @@ defect: it is fixed or quarantined with a Jira issue, never just retried until i
 
 ## 6. Risks
 
-| #   | Risk                                                                            | Likelihood | Impact | Mitigation in testing                                                                                                         |
-| --- | ------------------------------------------------------------------------------- | ---------- | ------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| R1  | Two fans buy the same seat (double booking)                                     | Medium     | High   | A unique constraint per seat and event, transactional holds, and concurrent-request integration tests (TC-HOLD-03, TC-PAY-11) |
-| R2  | A fan is charged but gets no tickets: the hold lapses during payment            | Medium     | High   | The conversion re-checks expiry inside the transaction, and refunds on failure (TC-PAY-09, TC-PAY-10)                         |
-| R3  | An unfair queue: fans skip ahead, lose their place, or are admitted twice       | Medium     | High   | Atomic Lua scripts, plus FIFO, re-join and 50-way concurrency tests (TC-Q-01 to TC-Q-04)                                      |
-| R4  | A fan bypasses the queue by opening the seat map or calling the action directly | Medium     | High   | Server-side access checks on both the page and the Server Action (TC-Q-08, TC-Q-12)                                           |
-| R5  | A held seat is never released if the expiry job is lost                         | Low        | Medium | Lapsed holds count as free on read, and the job is idempotent (TC-HOLD-07, TC-HOLD-12)                                        |
-| R6  | A stale seat map shows taken seats as free                                      | Medium     | Medium | Socket broadcast tests and a two-browser E2E (TC-HOLD-14)                                                                     |
-| R7  | Session theft or forgery                                                        | Low        | High   | httpOnly, SameSite and Secure cookie tests, forged-cookie rejection, and server-side logout (TC-AUTH-14 to TC-AUTH-16)        |
-| R8  | Tests pass locally but fail in CI (environment drift)                           | Medium     | Medium | Same Postgres and Redis versions in Compose and CI, and env validated at start-up by zod                                      |
-| R9  | Flaky E2E tests caused by timing                                                | Medium     | Medium | Web-first assertions, a 1-second queue cadence in E2E, a single worker, and traces on retry                                   |
-| R10 | Schedule: one developer with a fixed deadline (27 Nov 2026)                     | High       | Medium | Tests are written with each story, not at the end, and CI gates stop untested work merging                                    |
+| #   | Risk                                                                            | Likelihood | Impact | Mitigation in testing                                                                                                                      |
+| --- | ------------------------------------------------------------------------------- | ---------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| R1  | Two fans buy the same seat (double booking)                                     | Medium     | High   | A unique constraint per seat and event, transactional holds, and concurrent-request integration tests (TC-HOLD-03, TC-PAY-11)              |
+| R2  | A fan is charged but gets no tickets: the hold lapses during payment            | Medium     | High   | The conversion re-checks expiry inside the transaction, and refunds on failure (TC-PAY-09, TC-PAY-10)                                      |
+| R3  | An unfair queue: fans skip ahead, lose their place, or are admitted twice       | Medium     | High   | Atomic Lua scripts, plus FIFO, re-join and 50-way concurrency tests (TC-Q-01 to TC-Q-04)                                                   |
+| R4  | A fan bypasses the queue by opening the seat map or calling the action directly | Medium     | High   | Server-side access checks on both the page and the Server Action (TC-Q-08, TC-Q-12)                                                        |
+| R5  | A held seat is never released if the expiry job is lost                         | Low        | Medium | Lapsed holds count as free on read, and the job is idempotent (TC-HOLD-07, TC-HOLD-12)                                                     |
+| R6  | A stale seat map shows taken seats as free                                      | Medium     | Medium | Socket broadcast tests and a two-browser E2E (TC-HOLD-14)                                                                                  |
+| R7  | Session theft or forgery                                                        | Low        | High   | httpOnly, SameSite and Secure cookie tests, forged-cookie rejection, and server-side logout (TC-AUTH-14 to TC-AUTH-16)                     |
+| R8  | Tests pass locally but fail in CI (environment drift)                           | Medium     | Medium | Same Postgres and Redis versions in Compose and CI, and env validated at start-up by zod                                                   |
+| R9  | Flaky E2E tests caused by timing                                                | Medium     | Medium | Web-first assertions, a 1-second queue cadence in E2E, a single worker, and traces on retry                                                |
+| R10 | Schedule: one developer with a fixed deadline (27 Nov 2026)                     | High       | Medium | Tests are written with each story, not at the end, and CI gates stop untested work merging                                                 |
+| R11 | A fan gains organiser powers: edits or publishes events                         | Low        | High   | The proxy answers fans with 403, every organiser page and action re-checks the role, and sign-up can never set it (TC-ORG-02 to TC-ORG-06) |
 
 ## 7. Defect management
 

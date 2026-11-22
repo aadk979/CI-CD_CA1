@@ -169,12 +169,20 @@ model Ticket {
 // ── Authentication (Better Auth) ────────────────────────────────────────────
 // Field names follow Better Auth's core schema; see src/lib/auth.ts.
 
+/// What a signed-in user may do (SCRUM-24). Everyone signs up as a FAN; organisers are
+/// granted the role out of band (`npm run organiser:grant`), never through sign-up.
+enum UserRole {
+  FAN
+  ORGANISER
+}
+
 model User {
   id            String            @id
   name          String
   /// Stored lower-cased, so uniqueness is effectively case-insensitive.
   email         String            @unique
   emailVerified Boolean           @default(false)
+  role          UserRole          @default(FAN)
   image         String?
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt

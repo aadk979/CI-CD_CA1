@@ -20,7 +20,8 @@ Names with `%s`-style placeholders are parametrised tests: one test per row of i
 3. [Seat holds](#3-seat-holds) — SCRUM-31, 32, 33, 38
 4. [Virtual waiting room](#4-virtual-waiting-room) — SCRUM-34, 35, 36
 5. [Checkout and My tickets](#5-checkout-and-my-tickets) — SCRUM-39, SCRUM-40
-6. [Traceability matrix](#6-traceability-matrix)
+6. [Organiser: access, create and publish](#6-organiser-access-create-and-publish) — SCRUM-24, SCRUM-28
+7. [Traceability matrix](#7-traceability-matrix)
 
 ---
 
@@ -192,25 +193,73 @@ Names with `%s`-style placeholders are parametrised tests: one test per row of i
 
 ---
 
-## 6. Traceability matrix
+## 6. Organiser: access, create and publish
+
+### Input analysis
+
+| Input / state      | Valid classes                                       | Invalid classes                                                       | Boundaries tested                      |
+| ------------------ | --------------------------------------------------- | --------------------------------------------------------------------- | -------------------------------------- |
+| Who is asking      | organiser                                           | visitor (no session); fan                                             | —                                      |
+| Request kind       | page (GET)                                          | Server Action (POST)                                                  | —                                      |
+| Title (trimmed)    | 1–120 characters                                    | empty or only spaces; over 120                                        | 0, 1, 120, 121                         |
+| Description        | empty, or up to 2000 characters                     | over 2000                                                             | 2000, 2001                             |
+| Start time (SGT)   | a real date and time after now                      | now or earlier; malformed; a day that does not exist                  | 1 minute ago, exactly now, 1 minute on |
+| Section price (S$) | 0 – 10 000, at most 2 decimals; blank = not on sale | negative; 3 decimals; over 10 000; symbols, exponents, letters        | 0, 0.01, 10 000, 10 000.01             |
+| Tier name          | blank (uses the section name), up to 40 characters  | over 40                                                               | 40, 41                                 |
+| Priced sections    | 1 or more, all in the chosen venue                  | none; a section of another venue; more than 50 fields (tampered form) | 0, 1, 50, 51                           |
+| Event on publish   | DRAFT, starts in the future, has a price tier       | already published; started; no price tiers; unknown id                | starts exactly now                     |
+
+### Cases
+
+| ID        | Story    | Technique | Input / condition                                                                                      | Expected result                                                                                                                 | Automated in                                                                                                                                                                                   |
+| --------- | -------- | --------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TC-ORG-01 | SCRUM-24 | EP        | Visitor opens `/organiser` and `/organiser/events/new`                                                 | Redirected to log in                                                                                                            | E: `organiser` › "visitors are sent to log in"; U: `require-organiser` › "sends visitors to log in"                                                                                            |
+| TC-ORG-02 | SCRUM-24 | EP        | Signed-in fan opens both organiser pages                                                               | HTTP 403 with a "no access" page; no Organiser link in the header                                                               | E: `organiser` › "fans get a 403 on organiser pages and actions, and no organiser link"; U: `require-organiser` › "answers fans with 403 Forbidden"                                            |
+| TC-ORG-03 | SCRUM-24 | EG        | Fan posts a Server Action to an organiser page; a visitor does the same                                | 403 for the fan; 401 for the visitor (not a redirect that re-posts)                                                             | E: `organiser` › "fans get a 403 …", "signed-out Server Action posts get a 401, not a redirect"                                                                                                |
+| TC-ORG-04 | SCRUM-24 | EG        | An organiser action is reached without the proxy (e.g. role revoked mid-session)                       | The action's own `requireOrganiser()` stops visitors and fans; organisers get through                                           | U: `require-organiser` › all 3 tests                                                                                                                                                           |
+| TC-ORG-05 | SCRUM-24 | EG        | Sign-up request to the auth API that includes `role: "ORGANISER"`                                      | No organiser is created; every new account is a fan                                                                             | I: `account` › "sign-up can never grant the organiser role, even if the request asks for it", "everyone signs up as a fan"                                                                     |
+| TC-ORG-06 | SCRUM-24 | ST        | Grant, then revoke, the role while the user is signed in; grant an unknown email                       | Each change applies on the next request, without logging in again; unknown email reported                                       | I: `account` › "granting the role takes effect on the next request, …", "reports an unknown email instead of silently doing nothing"                                                           |
+| TC-ORG-07 | SCRUM-24 | EP        | Role check for an organiser, a fan, `null`, `undefined`                                                | Only the organiser passes                                                                                                       | U: `event-form` › "%o → %s"                                                                                                                                                                    |
+| TC-ORG-08 | SCRUM-28 | BVA       | Title `""`, `"   "`, 1, 120 and 121 characters                                                         | Only 1 and 120 accepted                                                                                                         | U: `event-form` › "title %j valid=%s"                                                                                                                                                          |
+| TC-ORG-09 | SCRUM-28 | BVA       | Description of 2000 and 2001 characters                                                                | 2000 accepted, 2001 rejected                                                                                                    | U: `event-form` › "description of %i characters valid=%s"                                                                                                                                      |
+| TC-ORG-10 | SCRUM-28 | BVA, EP   | Start 1 minute ago, exactly now, 1 minute on; malformed; `2026-02-30T10:00`; `T24:00`                  | Only "1 minute on" accepted; times are read as Singapore time                                                                   | U: `event-form` › "start %j valid=%s (%s)", "parseEventStart" tests                                                                                                                            |
+| TC-ORG-11 | SCRUM-28 | EP, BVA   | Price `0`, `0.01`, `68`, `68.5`, `10000`; `10000.01`, `-1`, `68.505`, `68.`, `.5`, `1e3`, `$68`, `abc` | First five accepted, in cents with no floating point; the rest rejected                                                         | U: `event-form` › "parsePriceCents (equivalence partitioning + boundary values)"                                                                                                               |
+| TC-ORG-12 | SCRUM-28 | EP, BVA   | No section priced; a bad price; tier names of 40 and 41 characters                                     | "Price at least one section"; each bad price or tier shown next to its own section; 40 accepted                                 | U: `event-form` › "needs at least one priced section", "puts a bad price or tier name next to its own section"                                                                                 |
+| TC-ORG-13 | SCRUM-28 | BVA, EG   | 50 and 51 section fields; malformed section ids; a file where text belongs                             | 50 accepted, 51 rejected; malformed fields dropped                                                                              | U: `event-form` › "%i section fields valid=%s (tampered forms are cut off)", "collects section prices and drops malformed or unknown fields"                                                   |
+| TC-ORG-14 | SCRUM-28 | EP        | Unknown venue; prices for another venue's sections                                                     | Rejected; nothing written                                                                                                       | I: `organiser` › "rejects an unknown venue", "rejects prices for another venue's sections, and writes nothing"; U: `event-form` › "rejects a %s venue"                                         |
+| TC-ORG-15 | SCRUM-28 | UC        | Organiser submits an invalid form, fixes it, and saves                                                 | Errors shown with typed values kept; then a DRAFT with its tiers (blank tier → section name) is created and not listed for fans | I: `organiser` › "creates a DRAFT with its price tiers, …", "a draft is not listed for fans"; E: `organiser` › "an organiser creates a draft, previews it, then publishes it to the home page" |
+| TC-ORG-16 | SCRUM-28 | EP, CON   | Three events with the same title, one after another and all at once                                    | Distinct slugs (`-2`, `-3`, …); concurrent creates all succeed                                                                  | I: `organiser` › "gives events with the same title distinct slugs", "two organisers creating the same title at once both succeed, with distinct slugs"; U: `event-form` › "slugify" tests      |
+| TC-ORG-17 | SCRUM-28 | EP        | A fan, then the organiser, open a draft's event page                                                   | Fan: "Event not found" (noindex). Organiser: the page with a draft-preview banner                                               | E: `organiser` (draft step)                                                                                                                                                                    |
+| TC-ORG-18 | SCRUM-28 | ST        | Publish a draft                                                                                        | ON_SALE; listed for fans; its seats can be held                                                                                 | I: `organiser` › "puts a draft on sale: listed for fans, and seats can be held"                                                                                                                |
+| TC-ORG-19 | SCRUM-28 | ST, CON   | Publish twice; two publishes at the same instant                                                       | Published exactly once; the other is told it is already published                                                               | I: `organiser` › "refuses to publish twice", "two simultaneous publishes put it on sale once"                                                                                                  |
+| TC-ORG-20 | SCRUM-28 | BVA       | Publish an event starting exactly now, and one starting a minute later                                 | First refused ("already started"), second published                                                                             | I: `organiser` › "an event starting %s publishable=%s (boundary)"                                                                                                                              |
+| TC-ORG-21 | SCRUM-28 | EP        | Publish an event with no price tiers; an unknown event id                                              | Refused with a message for each                                                                                                 | I: `organiser` › "refuses an event with no prices …", "reports an unknown event", "has a message for every failure"                                                                            |
+| TC-ORG-22 | SCRUM-28 | UC        | A visitor loads the (cached) home page, then the organiser publishes                                   | The event is on the home page at the visitor's next visit, with its price (cache tag expired)                                   | E: `organiser` (publish step). Checked to fail when the cache expiry is removed                                                                                                                |
+| TC-ORG-23 | SCRUM-28 | UC        | Organiser dashboard and create-form data                                                               | Every event in every status, soonest first, with tiers and tickets sold; venues with sections and seat counts                   | I: `organiser` › "lists every event in every status, …", "lists venues by name with their sections in venue order and seat counts"                                                             |
+
+---
+
+## 7. Traceability matrix
 
 Every delivered story has at least one case at the level where its risk lives, and an E2E case
 for its main path.
 
-| Story / task                          | Test cases                                     | Unit | Integration | E2E |
-| ------------------------------------- | ---------------------------------------------- | :--: | :---------: | :-: |
-| SCRUM-22 Register an account          | TC-AUTH-01 to TC-AUTH-09                       |  ✓   |      ✓      |  ✓  |
-| SCRUM-23 Log in and log out           | TC-AUTH-10 to TC-AUTH-17                       |  ✓   |      ✓      |  ✓  |
-| SCRUM-25 Browse upcoming events       | TC-CAT-01 to TC-CAT-03                         |      |      ✓      |  ✓  |
-| SCRUM-26 View event details           | TC-CAT-04, TC-CAT-05                           |      |      ✓      |  ✓  |
-| SCRUM-29 Seat map data model          | TC-CAT-06, TC-CAT-07                           |  ✓   |      ✓      |     |
-| SCRUM-30 Interactive seat map         | TC-CAT-08                                      |  ✓   |      ✓      |  ✓  |
-| SCRUM-31 Hold seats for 10 minutes    | TC-HOLD-01, 02, 04, 06, 08, 09, 10, 13, 16, 17 |  ✓   |      ✓      |  ✓  |
-| SCRUM-32 Prevent double booking       | TC-HOLD-03, 05, 11, 15                         |      |      ✓      |  ✓  |
-| SCRUM-33 Release expired holds        | TC-HOLD-07, TC-HOLD-12                         |  ✓   |      ✓      |     |
-| SCRUM-34 Join the waiting room        | TC-Q-01 to 03, TC-Q-08, 09, 12                 |      |      ✓      |  ✓  |
-| SCRUM-35 Admit in batches             | TC-Q-04 to 07, TC-Q-10                         |  ✓   |      ✓      |  ✓  |
-| SCRUM-36 Live queue position          | TC-Q-11, TC-Q-13 to 16                         |  ✓   |      ✓      |  ✓  |
-| SCRUM-38 Live seat availability       | TC-HOLD-14                                     |  ✓   |      ✓      |  ✓  |
-| SCRUM-39 Checkout (simulated payment) | TC-PAY-01 to TC-PAY-14, TC-PAY-16              |  ✓   |      ✓      |  ✓  |
-| SCRUM-40 My tickets                   | TC-PAY-15                                      |      |      ✓      |  ✓  |
+| Story / task                                      | Test cases                                     | Unit | Integration | E2E |
+| ------------------------------------------------- | ---------------------------------------------- | :--: | :---------: | :-: |
+| SCRUM-22 Register an account                      | TC-AUTH-01 to TC-AUTH-09                       |  ✓   |      ✓      |  ✓  |
+| SCRUM-23 Log in and log out                       | TC-AUTH-10 to TC-AUTH-17                       |  ✓   |      ✓      |  ✓  |
+| SCRUM-25 Browse upcoming events                   | TC-CAT-01 to TC-CAT-03                         |      |      ✓      |  ✓  |
+| SCRUM-26 View event details                       | TC-CAT-04, TC-CAT-05                           |      |      ✓      |  ✓  |
+| SCRUM-29 Seat map data model                      | TC-CAT-06, TC-CAT-07                           |  ✓   |      ✓      |     |
+| SCRUM-30 Interactive seat map                     | TC-CAT-08                                      |  ✓   |      ✓      |  ✓  |
+| SCRUM-31 Hold seats for 10 minutes                | TC-HOLD-01, 02, 04, 06, 08, 09, 10, 13, 16, 17 |  ✓   |      ✓      |  ✓  |
+| SCRUM-32 Prevent double booking                   | TC-HOLD-03, 05, 11, 15                         |      |      ✓      |  ✓  |
+| SCRUM-33 Release expired holds                    | TC-HOLD-07, TC-HOLD-12                         |  ✓   |      ✓      |     |
+| SCRUM-34 Join the waiting room                    | TC-Q-01 to 03, TC-Q-08, 09, 12                 |      |      ✓      |  ✓  |
+| SCRUM-35 Admit in batches                         | TC-Q-04 to 07, TC-Q-10                         |  ✓   |      ✓      |  ✓  |
+| SCRUM-36 Live queue position                      | TC-Q-11, TC-Q-13 to 16                         |  ✓   |      ✓      |  ✓  |
+| SCRUM-38 Live seat availability                   | TC-HOLD-14                                     |  ✓   |      ✓      |  ✓  |
+| SCRUM-39 Checkout (simulated payment)             | TC-PAY-01 to TC-PAY-14, TC-PAY-16              |  ✓   |      ✓      |  ✓  |
+| SCRUM-40 My tickets                               | TC-PAY-15                                      |      |      ✓      |  ✓  |
+| SCRUM-24 Organiser-only pages                     | TC-ORG-01 to TC-ORG-07                         |  ✓   |      ✓      |  ✓  |
+| SCRUM-28 Organiser creates and publishes an event | TC-ORG-08 to TC-ORG-23                         |  ✓   |      ✓      |  ✓  |
