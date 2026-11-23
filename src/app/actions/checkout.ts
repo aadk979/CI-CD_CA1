@@ -6,6 +6,8 @@ import { redirect } from 'next/navigation';
 import { getPrisma } from '@/lib/db';
 import { isValidId } from '@/lib/holds';
 import { checkout } from '@/lib/orders';
+import { scheduleOrderConfirmation } from '@/server/jobs/order-email';
+import { QUEUE_NAMES, getQueue } from '@/server/queues';
 import { getCurrentUser } from '@/server/session';
 
 export interface CheckoutActionState {
@@ -34,6 +36,12 @@ export async function checkoutAction(
   if (!result.ok) {
     refresh(); // show the cart as it is now (e.g. emptied by an expired hold)
     return { message: result.message };
+  }
+  try {
+    await scheduleOrderConfirmation(getQueue(QUEUE_NAMES.email), result.orderId);
+  } catch (err) {
+    // The order is paid and saved; a missing email must never undo or hide that.
+    console.error('Could not queue the order confirmation email', err);
   }
   redirect(`/tickets?order=${result.orderId}`);
 }

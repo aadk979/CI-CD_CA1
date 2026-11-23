@@ -11,6 +11,7 @@ import { disconnectPrisma, getPrisma } from '@/lib/db';
 import { getEnv } from '@/lib/env';
 import type { ServerToClientEvents } from '@/lib/realtime';
 import { createRedis } from '@/lib/redis';
+import { logEmailSender } from '@/lib/order-email';
 import { admitFromAllQueues } from '@/lib/waiting-room';
 import { broadcastQueue, broadcastSeats } from '@/server/broadcast';
 import { createAdmitQueueProcessor } from '@/server/jobs/admit-queue';
@@ -20,6 +21,7 @@ import {
   createReleaseHoldsProcessor,
   type ReleaseHoldsJobData,
 } from '@/server/jobs/release-holds';
+import { createOrderEmailProcessor, type OrderEmailJobData } from '@/server/jobs/order-email';
 import { JOB_NAMES, QUEUE_NAMES, createQueue } from '@/server/queues';
 
 loadEnv();
@@ -116,7 +118,23 @@ async function main() {
     { connection: createRedis() },
   );
 
-  for (const worker of [systemWorker, holdsWorker, waitingRoomWorker]) {
+  // Order confirmation emails (SCRUM-42): delivery is simulated by logging the message.
+  const orderEmail = createOrderEmailProcessor({ prisma: getPrisma(), send: logEmailSender });
+  const emailWorker = new Worker<OrderEmailJobData>(
+    QUEUE_NAMES.email,
+    async (job) => {
+      switch (job.name) {
+        case JOB_NAMES.sendOrderConfirmation:
+          return orderEmail(job.data);
+        default:
+          throw new Error(`Unknown job "${job.name}" on queue "${QUEUE_NAMES.email}"`);
+      }
+    },
+    { connection: createRedis() },
+  );
+
+  const allWorkers = [systemWorker, holdsWorker, waitingRoomWorker, emailWorker];
+  for (const worker of allWorkers) {
     worker.on('failed', (job, err) => {
       console.error(`Job ${job?.name}#${job?.id} failed:`, err.message);
     });
@@ -126,7 +144,7 @@ async function main() {
 
   const shutdown = async (signal: string) => {
     console.log(`${signal} received — draining worker`);
-    await Promise.all([systemWorker.close(), holdsWorker.close(), waitingRoomWorker.close()]); // waits for in-flight jobs
+    await Promise.all(allWorkers.map((w) => w.close())); // waits for in-flight jobs
     await Promise.all([systemQueue.close(), holdsQueue.close(), waitingRoomQueue.close()]);
     await Promise.allSettled([redis.quit(), disconnectPrisma()]);
     process.exit(0);

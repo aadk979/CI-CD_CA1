@@ -9,6 +9,8 @@ export const QUEUE_NAMES = {
   holds: 'holds',
   /** Virtual waiting room: admit the next batch of queued fans on a fixed interval. */
   waitingRoom: 'waiting-room',
+  /** Transactional email, sent off the request path so checkout never waits on it. */
+  email: 'email',
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
@@ -18,6 +20,7 @@ export const JOB_NAMES = {
   releaseHolds: 'release-holds',
   sweepHolds: 'sweep-holds',
   admitQueue: 'admit-queue',
+  sendOrderConfirmation: 'send-order-confirmation',
 } as const;
 
 export function createQueue(name: QueueName, connection: ConnectionOptions): Queue {
