@@ -32,11 +32,22 @@ deploy_image() {
   $COMPOSE up -d --remove-orphans
 }
 
+# Caddy redirects http → https when SITE_ADDRESS is a domain, so probe the same way a
+# browser would: https, with the site name resolved to this machine. -k because the
+# certificate may still be being issued on the very first deploy; the pipeline's external
+# smoke test checks the real, verified URL afterwards.
+SITE=$(grep -E '^SITE_ADDRESS=' .env | head -1 | cut -d= -f2- | tr -d "\"'" || true)
+if [[ -z "$SITE" || "$SITE" == :* ]]; then
+  HEALTH_ARGS=(http://localhost/api/health)
+else
+  HEALTH_ARGS=(-k --resolve "$SITE:443:127.0.0.1" "https://$SITE/api/health")
+fi
+
 smoke_test() {
   local expected="$1"
   echo "▶ Smoke test: waiting for version $expected"
   for _ in $(seq 1 30); do
-    body=$(curl -fsS http://localhost/api/health 2>/dev/null || true)
+    body=$(curl -fsS "${HEALTH_ARGS[@]}" 2>/dev/null || true)
     if [[ "$body" == *"\"version\":\"$expected\""* && "$body" != *'"status":"down"'* ]]; then
       echo "✔ Healthy: $body"
       return 0
