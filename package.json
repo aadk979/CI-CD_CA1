@@ -18,6 +18,7 @@
     "test:integration": "vitest run --project integration",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
+    "test:load": "k6 run tests/load/waiting-room.k6.js",
     "db:up": "docker compose up -d --wait postgres redis",
     "db:down": "docker compose down",
     "db:generate": "prisma generate",
