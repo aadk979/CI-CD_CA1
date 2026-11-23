@@ -1,0 +1,84 @@
+# ─────────────────────────────────────────────────────────────────────────
+#  Uptime monitor — checks production every 10 minutes (SCRUM-21)
+# ─────────────────────────────────────────────────────────────────────────
+# Calls /api/health, which reports the database, Redis and worker. If production is
+# unreachable or any dependency is down, the run fails (GitHub emails the repo owner for
+# failed scheduled workflows) and an "Production is down" issue is opened or updated.
+# When the next check passes, the issue is commented on and closed.
+#
+# Needs repository variables DEPLOY_ENABLED=true and PRODUCTION_URL (set for the CD pipeline).
+
+name: Uptime Monitor
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: uptime-monitor
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check production health
+    runs-on: ubuntu-latest
+    if: vars.DEPLOY_ENABLED == 'true' && vars.PRODUCTION_URL != ''
+    steps:
+      - name: Call /api/health (3 attempts)
+        id: health
+        run: |
+          ok=false
+          for attempt in 1 2 3; do
+            code=$(curl -sS -m 15 -o body.json -w '%{http_code}' "${{ vars.PRODUCTION_URL }}/api/health" || echo 000)
+            body=$(cat body.json 2>/dev/null || true)
+            echo "attempt $attempt: HTTP $code $body"
+            if [[ "$code" == 200 && "$body" == *'"status":"ok"'* ]]; then ok=true; break; fi
+            sleep 15
+          done
+          echo "ok=$ok" >> "$GITHUB_OUTPUT"
+          {
+            echo 'detail<<EOF'
+            echo "HTTP $code"
+            echo "$body"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Open or update the outage issue
+        if: steps.health.outputs.ok != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DETAIL: ${{ steps.health.outputs.detail }}
+        run: |
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label outage --json number --jq '.[0].number // empty')
+          msg="Health check failed at $(date -u +%FT%TZ) for ${{ vars.PRODUCTION_URL }}/api/health
+
+          \`\`\`
+          $DETAIL
+          \`\`\`
+          Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          if [[ -n "$existing" ]]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$msg"
+          else
+            gh label create outage --repo "$GITHUB_REPOSITORY" --color B60205 --description "Production is down" 2>/dev/null || true
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "Production is down" --label outage --body "$msg"
+          fi
+
+      - name: Close the outage issue once healthy again
+        if: steps.health.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for n in $(gh issue list --repo "$GITHUB_REPOSITORY" --state open --label outage --json number --jq '.[].number'); do
+            gh issue close "$n" --repo "$GITHUB_REPOSITORY" --comment "Recovered: health check passed at $(date -u +%FT%TZ)."
+          done
+
+      - name: Fail the run if production is unhealthy
+        if: steps.health.outputs.ok != 'true'
+        run: |
+          echo "::error::Production health check failed"
+          exit 1
