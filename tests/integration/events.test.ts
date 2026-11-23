@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { disconnectPrisma, getPrisma } from '@/lib/db';
-import { listUpcomingEvents } from '@/lib/events';
+import { listEventCities, listUpcomingEvents } from '@/lib/events';
 import { resetDatabase } from './helpers';
 
 const prisma = getPrisma();
@@ -90,5 +90,67 @@ describe('listUpcomingEvents (real database)', () => {
     });
 
     expect(await listUpcomingEvents(prisma)).toHaveLength(1);
+  });
+
+  describe('search and filter (SCRUM-27)', () => {
+    async function seedCatalogue() {
+      const sg = await prisma.venue.create({
+        data: { name: 'Harbour Arena', city: 'Singapore', capacity: 500 },
+      });
+      const kl = await prisma.venue.create({
+        data: { name: 'Bukit Hall', city: 'Kuala Lumpur', capacity: 500 },
+      });
+      await prisma.event.createMany({
+        data: [
+          {
+            slug: 'neon',
+            title: 'Neon Skyline',
+            startsAt: days(2),
+            status: 'ON_SALE',
+            venueId: sg.id,
+          },
+          {
+            slug: 'jazz',
+            title: 'Jazz Night',
+            startsAt: days(3),
+            status: 'ON_SALE',
+            venueId: kl.id,
+          },
+          {
+            slug: 'old',
+            title: 'Neon Past',
+            startsAt: days(-2),
+            status: 'ON_SALE',
+            venueId: kl.id,
+          },
+        ],
+      });
+    }
+
+    it('matches the title case-insensitively', async () => {
+      await seedCatalogue();
+      const events = await listUpcomingEvents(prisma, { now: NOW, query: 'NEON' });
+      expect(events.map((e) => e.slug)).toEqual(['neon']);
+    });
+
+    it('matches the venue name', async () => {
+      await seedCatalogue();
+      const events = await listUpcomingEvents(prisma, { now: NOW, query: 'bukit' });
+      expect(events.map((e) => e.slug)).toEqual(['jazz']);
+    });
+
+    it('filters by city and combines with the query', async () => {
+      await seedCatalogue();
+      const byCity = await listUpcomingEvents(prisma, { now: NOW, city: 'Kuala Lumpur' });
+      expect(byCity.map((e) => e.slug)).toEqual(['jazz']);
+      const none = await listUpcomingEvents(prisma, { now: NOW, city: 'Singapore', query: 'jazz' });
+      expect(none).toEqual([]);
+    });
+
+    it('lists only cities with upcoming events', async () => {
+      await seedCatalogue();
+      await prisma.venue.create({ data: { name: 'Empty', city: 'Penang', capacity: 10 } });
+      expect(await listEventCities(prisma, { now: NOW })).toEqual(['Kuala Lumpur', 'Singapore']);
+    });
   });
 });
