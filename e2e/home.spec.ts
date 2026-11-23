@@ -12,6 +12,18 @@ test.describe('Home page', () => {
     await expect(list).toContainText('Harbour Arena, Singapore');
   });
 
+  test('searches events by title and shows a message when nothing matches', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('searchbox', { name: 'Search events or venues' }).fill('neon skyline');
+    await page.getByRole('button', { name: 'Search' }).click();
+    await expect(page).toHaveURL(/query=neon\+skyline/);
+    await expect(page.getByTestId('event-list')).toContainText('Neon Skyline Tour');
+
+    await page.getByRole('searchbox', { name: 'Search events or venues' }).fill('zzzzzz');
+    await page.getByRole('button', { name: 'Search' }).click();
+    await expect(page.getByTestId('no-events')).toHaveText('No events match your search.');
+  });
+
   test('opens a live WebSocket connection', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByTestId('connection-status')).toHaveText('Live');
