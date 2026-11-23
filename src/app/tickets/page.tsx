@@ -5,6 +5,7 @@ import { Suspense } from 'react';
 import { getPrisma } from '@/lib/db';
 import { formatEventDate, formatPrice } from '@/lib/format';
 import { listOrders } from '@/lib/orders';
+import { ticketQrDataUri } from '@/lib/ticket-qr';
 import { getCurrentUser } from '@/server/session';
 
 export const metadata: Metadata = { title: 'My tickets' };
@@ -19,6 +20,13 @@ async function MyTickets({ searchParams }: Pick<PageProps<'/tickets'>, 'searchPa
     searchParams,
   ]);
   const confirmed = orders.find((o) => o.id === justPaid);
+  const qrCodes = new Map(
+    await Promise.all(
+      orders
+        .flatMap((o) => o.tickets)
+        .map(async (t) => [t.id, await ticketQrDataUri(t.id)] as const),
+    ),
+  );
 
   return (
     <>
@@ -63,11 +71,22 @@ async function MyTickets({ searchParams }: Pick<PageProps<'/tickets'>, 'searchPa
               <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
                 {formatEventDate(order.event.startsAt)} · {order.event.venue}, {order.event.city}
               </p>
-              <ul className="mt-3 flex flex-col gap-1 text-sm" aria-label="Seats">
+              <ul className="mt-3 flex flex-col gap-3 text-sm" aria-label="Seats">
                 {order.tickets.map((t) => (
-                  <li key={t.id}>
-                    {t.section} · Row {t.row} · Seat {t.number}
-                    <span className="ml-2 text-zinc-500">{t.tierName}</span>
+                  <li key={t.id} className="flex items-center gap-4" data-testid="ticket">
+                    {/* White tile so the code scans in dark mode too. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element -- inline SVG data URI */}
+                    <img
+                      src={qrCodes.get(t.id)}
+                      alt={`QR code for ${t.section}, row ${t.row}, seat ${t.number}`}
+                      width={96}
+                      height={96}
+                      className="rounded bg-white"
+                    />
+                    <span>
+                      {t.section} · Row {t.row} · Seat {t.number}
+                      <span className="ml-2 text-zinc-500">{t.tierName}</span>
+                    </span>
                   </li>
                 ))}
               </ul>

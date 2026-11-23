@@ -67,6 +67,7 @@ test.describe('Checkout (SCRUM-39) and My tickets (SCRUM-40)', () => {
     await expect(order).toContainText('Neon Skyline Tour');
     await expect(order).toContainText('$136.00');
     await expect(order.getByRole('list', { name: 'Seats' }).getByRole('listitem')).toHaveCount(2);
+    await expect(order.getByRole('img', { name: /^QR code for/ })).toHaveCount(2);
 
     // My tickets is one click away from any page.
     await ada.goto('/');
