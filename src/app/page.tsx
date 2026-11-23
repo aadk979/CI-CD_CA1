@@ -44,7 +44,7 @@ async function SearchForm({ filters }: { filters: EventFilters }) {
         name="query"
         defaultValue={filters.query}
         placeholder="Search events or venues"
-        aria-label="Search events or venues"
+        aria-label="Search events"
         className="min-w-0 flex-1 rounded border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-transparent"
       />
       <select
