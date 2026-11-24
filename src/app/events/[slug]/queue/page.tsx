@@ -1,8 +1,11 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
-import { Suspense } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import { joinQueueAction } from '@/app/actions/queue';
 import { QueuePosition } from '@/components/queue/queue-position';
+import { BackLink, PageShell } from '@/components/ui/page';
+import { button, card } from '@/components/ui/styles';
+import { ACCESS_PASS_TTL_MS } from '@/lib/config';
 import { getPrisma } from '@/lib/db';
 import { getEnv } from '@/lib/env';
 import { isOnSale } from '@/lib/events';
@@ -34,11 +37,14 @@ async function WaitingRoom({ params }: Pick<PageProps<'/events/[slug]/queue'>, '
 
   const header = (
     <header className="mb-8">
-      <p className="text-sm font-medium tracking-wide text-amber-700 uppercase dark:text-amber-400">
+      <p className="text-amber-soft flex items-center gap-2 text-xs font-semibold tracking-[0.14em] uppercase">
+        <span className="bg-amber-soft h-1.5 w-1.5 rounded-full" aria-hidden />
         Waiting room
       </p>
-      <h1 className="mt-1 text-3xl font-semibold tracking-tight">{event.title}</h1>
-      <p className="mt-2 text-zinc-600 dark:text-zinc-400">
+      <h1 className="font-display text-display-sm text-ink md:text-display-md mt-3 font-semibold">
+        {event.title}
+      </h1>
+      <p className="text-body mt-2">
         {formatEventDate(event.startsAt)} · {event.venue.name}, {event.venue.city}
       </p>
     </header>
@@ -46,19 +52,17 @@ async function WaitingRoom({ params }: Pick<PageProps<'/events/[slug]/queue'>, '
 
   if (!user) {
     return (
-      <>
-        {header}
-        <p className="mb-4">
-          Demand for this event is high, so fans are let in to pick seats in the order they arrive.
-          Log in to join the queue.
-        </p>
-        <Link
-          href="/login"
-          className="inline-block rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white dark:bg-zinc-100 dark:text-zinc-900"
-        >
-          Log in to join the queue
-        </Link>
-      </>
+      <Layout header={header}>
+        <div className={`${card} p-6 md:p-8`}>
+          <p className="text-body mb-6">
+            Demand for this event is high, so fans are let in to pick seats in the order they
+            arrive. Log in to join the queue.
+          </p>
+          <Link href="/login" className={button.primary}>
+            Log in to join the queue
+          </Link>
+        </div>
+      </Layout>
     );
   }
 
@@ -69,8 +73,7 @@ async function WaitingRoom({ params }: Pick<PageProps<'/events/[slug]/queue'>, '
 
   if (status.state === 'queued') {
     return (
-      <>
-        {header}
+      <Layout header={header}>
         <QueuePosition
           eventId={event.id}
           eventPath={eventPath}
@@ -80,50 +83,108 @@ async function WaitingRoom({ params }: Pick<PageProps<'/events/[slug]/queue'>, '
           batchSize={batchSize}
           intervalMs={intervalMs}
         />
-      </>
+      </Layout>
     );
   }
 
   // Not in the queue yet. Joining puts this fan behind everyone already waiting.
   const wait = estimateWaitMs(status.waiting + 1, batchSize, intervalMs);
   return (
+    <Layout header={header}>
+      <div className={`${card} p-6 md:p-8`}>
+        <p className="text-body mb-6">
+          Demand for this event is high, so fans are let in to pick seats in the order they join the
+          queue.
+        </p>
+        <div className="mb-6 grid grid-cols-2 gap-3 text-sm" aria-hidden>
+          <div className="border-hairline bg-surface-2 rounded-btn border px-4 py-3">
+            <p className="text-muted">Fans waiting</p>
+            <p className="font-display text-ink mt-1 text-2xl font-semibold tabular-nums">
+              {status.waiting}
+            </p>
+          </div>
+          <div className="border-hairline bg-surface-2 rounded-btn border px-4 py-3">
+            <p className="text-muted">Wait if you join now</p>
+            <p className="text-ink mt-1 font-semibold">{formatWait(wait)}</p>
+          </div>
+        </div>
+        <p className="text-muted mb-6 text-sm" data-testid="queue-preview">
+          {status.waiting === 0
+            ? 'Nobody is waiting right now.'
+            : `${status.waiting} fan${status.waiting === 1 ? ' is' : 's are'} waiting.`}{' '}
+          Estimated wait if you join now: {formatWait(wait)}.
+        </p>
+        <form action={joinQueueAction}>
+          <input type="hidden" name="slug" value={slug} />
+          <button type="submit" className={button.primary}>
+            Join the queue
+          </button>
+        </form>
+      </div>
+    </Layout>
+  );
+}
+
+const HOW = [
+  ['Your place is fixed', 'You keep your spot in line, even if you refresh or reconnect.'],
+  ['Fans go in batches', 'A few fans are let in at a time, in the order they joined.'],
+  [
+    'You get a shopping pass',
+    `Once in, you have ${ACCESS_PASS_TTL_MS / 60_000} minutes to pick and hold seats.`,
+  ],
+] as const;
+
+/** Two columns on desktop: the live status on the left, what happens next on the right. */
+function Layout({ header, children }: { header: ReactNode; children: ReactNode }) {
+  return (
     <>
       {header}
-      <p className="mb-2">
-        Demand for this event is high, so fans are let in to pick seats in the order they join the
-        queue.
-      </p>
-      <p className="mb-6 text-sm text-zinc-600 dark:text-zinc-400" data-testid="queue-preview">
-        {status.waiting === 0
-          ? 'Nobody is waiting right now.'
-          : `${status.waiting} fan${status.waiting === 1 ? ' is' : 's are'} waiting.`}{' '}
-        Estimated wait if you join now: {formatWait(wait)}.
-      </p>
-      <form action={joinQueueAction}>
-        <input type="hidden" name="slug" value={slug} />
-        <button
-          type="submit"
-          className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
-        >
-          Join the queue
-        </button>
-      </form>
+      <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+        <div>{children}</div>
+        <aside aria-labelledby="queue-how" className="flex flex-col gap-3">
+          <h2 id="queue-how" className="font-display text-ink text-lg font-semibold">
+            How the waiting room works
+          </h2>
+          <ol className="flex flex-col gap-3">
+            {HOW.map(([title, body], i) => (
+              <li key={title} className={`${card} flex gap-4 p-5`}>
+                <span className="bg-violet/15 text-violet-soft flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-mono text-sm font-semibold">
+                  {i + 1}
+                </span>
+                <span>
+                  <span className="text-ink block font-semibold">{title}</span>
+                  <span className="text-body text-sm">{body}</span>
+                </span>
+              </li>
+            ))}
+          </ol>
+          <Link href="/how-it-works#fair-queue" className={`${button.link} mt-1`}>
+            More about fair queueing
+          </Link>
+        </aside>
+      </div>
     </>
   );
 }
 
 export default function QueuePage({ params }: PageProps<'/events/[slug]/queue'>) {
   return (
-    <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10">
-      <Link href="/" className="text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100">
-        ← All events
-      </Link>
-      <div className="mt-4">
+    <PageShell tone="live">
+      <BackLink href="/events">All events</BackLink>
+      <div className="mt-6">
         {/* The session and the queue are request data: stream them in. */}
-        <Suspense fallback={<p className="text-zinc-500">Checking the queue…</p>}>
+        <Suspense
+          fallback={
+            <div className="flex flex-col gap-4" aria-busy>
+              <p className="sr-only">Checking the queue…</p>
+              <div className="skeleton h-10 w-2/3" />
+              <div className="skeleton h-72 w-full" />
+            </div>
+          }
+        >
           <WaitingRoom params={params} />
         </Suspense>
       </div>
-    </main>
+    </PageShell>
   );
 }
