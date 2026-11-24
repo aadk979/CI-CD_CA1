@@ -36,8 +36,13 @@ export function HoldCountdown({
 
   // Rendered on the server too: show nothing until the browser's clock takes over,
   // so server and client markup match.
+  // The last minute pulses so a lapsing hold is hard to miss.
+  const urgent = remaining !== null && remaining > 0 && remaining < 60_000;
   return (
-    <span className="font-mono tabular-nums" data-testid={testId}>
+    <span
+      className={`font-mono font-semibold tabular-nums ${urgent ? 'text-danger animate-urgent' : 'text-pink-soft'}`}
+      data-testid={testId}
+    >
       {remaining === null ? '—' : formatCountdown(remaining)}
     </span>
   );
