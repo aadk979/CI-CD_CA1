@@ -1,11 +1,11 @@
 import type { PrismaClient } from '@/generated/prisma/client';
 import { isOnSale } from './events';
 import {
-  chargeCard,
-  parseCardNumber,
+  refundOwnedPayment,
   refundPayment,
-  type ChargeRequest,
-  type ChargeResult,
+  verifyPayment,
+  type VerifyRequest,
+  type VerifyResult,
 } from './payments';
 import { compareRowLabels } from './seating';
 
@@ -13,8 +13,8 @@ import { compareRowLabels } from './seating';
  * Checkout and orders (SCRUM-39/40). Framework-free: the Server Action and pages wrap
  * these, and the integration tests run them against a real database.
  *
- * Checkout charges the card first, then converts the fan's holds to sales in one
- * transaction. The conversion re-checks every hold is still live, so a hold that lapsed
+ * The browser pays Stripe first (see payments.ts); checkout then verifies that payment with
+ * Stripe and converts the fan's holds to sales in one transaction. The conversion re-checks every hold is still live, so a hold that lapsed
  * mid-payment (or was taken by the expiry job) fails the whole order and the payment is
  * refunded: a fan is never charged for seats they didn't get, and never gets half an order.
  */
@@ -39,18 +39,20 @@ export interface Cart {
 }
 
 export type CheckoutErrorCode =
-  'invalid-card' | 'declined' | 'no-holds' | 'expired' | 'not-on-sale';
+  'payment-failed' | 'payment-mismatch' | 'no-holds' | 'expired' | 'not-on-sale';
 
 export type CheckoutResult =
   | { ok: true; orderId: string; totalCents: number; currency: string; seats: number }
   | { ok: false; code: CheckoutErrorCode; message: string };
 
 export const CHECKOUT_MESSAGES: Record<CheckoutErrorCode, string> = {
-  'invalid-card': 'Enter a valid 16-digit card number.',
-  declined: 'Your card was declined. Your seats are still held: try another card.',
-  'no-holds': 'You have no seats on hold for this event. Your hold may have expired.',
-  expired: 'Your hold expired before payment completed. You have not been charged.',
-  'not-on-sale': 'Tickets for this event are not on sale.',
+  'payment-failed': 'Your payment did not go through. Your seats are still held: try again.',
+  'payment-mismatch':
+    'Your seats changed while you were paying, so the payment was refunded. Please try again.',
+  'no-holds':
+    'You have no seats on hold for this event. Your hold may have expired; any payment was refunded.',
+  expired: 'Your hold expired before payment completed. Your payment was refunded.',
+  'not-on-sale': 'Tickets for this event are not on sale. Any payment was refunded.',
 };
 
 const fail = (code: CheckoutErrorCode): CheckoutResult => ({
@@ -124,39 +126,82 @@ class HoldLapsedError extends Error {}
 export interface CheckoutRequest {
   eventId: string;
   userId: string;
-  cardNumber: unknown;
+  /** The Stripe PaymentIntent the browser just confirmed. */
+  paymentIntentId: unknown;
 }
 
 export interface CheckoutDeps {
-  pay?: (request: ChargeRequest) => Promise<ChargeResult>;
+  verify?: (request: VerifyRequest) => Promise<VerifyResult>;
   refund?: (paymentRef: string) => Promise<void>;
+  /** Refund a paid intent when there is no cart to turn into an order. */
+  refundOwned?: (paymentIntentId: string, userId: string) => Promise<void>;
   /** Read twice: when pricing the cart, and again when converting holds after payment. */
   clock?: () => Date;
 }
 
 export async function checkout(
   prisma: PrismaClient,
-  { eventId, userId, cardNumber }: CheckoutRequest,
-  { pay = chargeCard, refund = refundPayment, clock = () => new Date() }: CheckoutDeps = {},
+  { eventId, userId, paymentIntentId }: CheckoutRequest,
+  {
+    verify = verifyPayment,
+    refund = refundPayment,
+    refundOwned = refundOwnedPayment,
+    clock = () => new Date(),
+  }: CheckoutDeps = {},
 ): Promise<CheckoutResult> {
-  const card = parseCardNumber(cardNumber);
-  if (!card) return fail('invalid-card');
+  if (typeof paymentIntentId !== 'string' || !/^pi_[A-Za-z0-9_]+$/.test(paymentIntentId)) {
+    return fail('payment-failed');
+  }
+
+  // A double submit (or a retry after a dropped response) must not fail or sell twice.
+  const existing = await prisma.order.findUnique({
+    where: { paymentRef: paymentIntentId },
+    select: {
+      id: true,
+      userId: true,
+      totalCents: true,
+      currency: true,
+      _count: { select: { tickets: true } },
+    },
+  });
+  if (existing) {
+    if (existing.userId !== userId) return fail('payment-failed');
+    return {
+      ok: true,
+      orderId: existing.id,
+      totalCents: existing.totalCents,
+      currency: existing.currency,
+      seats: existing._count.tickets,
+    };
+  }
 
   const event = await prisma.event.findUnique({
     where: { id: eventId },
     select: { status: true, startsAt: true },
   });
-  if (!event || !isOnSale(event, clock())) return fail('not-on-sale');
+  if (!event || !isOnSale(event, clock())) {
+    await refundOwned(paymentIntentId, userId);
+    return fail('not-on-sale');
+  }
 
   const cart = await getCart(prisma, { eventId, userId, now: clock() });
-  if (!cart) return fail('no-holds');
+  if (!cart) {
+    await refundOwned(paymentIntentId, userId);
+    return fail('no-holds');
+  }
 
-  const charge = await pay({
+  const payment = await verify({
+    paymentIntentId,
     amountCents: cart.totalCents,
     currency: cart.currency,
-    cardNumber: card,
+    userId,
+    eventId,
   });
-  if (!charge.ok) return fail(charge.code);
+  if (!payment.ok) {
+    if (payment.code === 'payment-mismatch') await refundOwned(paymentIntentId, userId);
+    return fail(payment.code);
+  }
+  const charge = payment;
 
   try {
     const order = await prisma.$transaction(async (tx) => {

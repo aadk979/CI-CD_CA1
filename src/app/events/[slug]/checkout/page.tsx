@@ -85,7 +85,11 @@ async function Checkout({ params }: Pick<PageProps<'/events/[slug]/checkout'>, '
             <h2 id="payment-heading" className="mb-3 text-xl font-medium">
               Payment
             </h2>
-            <PaymentForm eventId={event.id} total={formatPrice(cart.totalCents, cart.currency)} />
+            <PaymentForm
+              eventId={event.id}
+              total={formatPrice(cart.totalCents, cart.currency)}
+              publishableKey={process.env.STRIPE_PUBLISHABLE_KEY}
+            />
           </section>
         </div>
       )}

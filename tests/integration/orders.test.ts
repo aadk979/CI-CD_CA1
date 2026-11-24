@@ -2,12 +2,10 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { disconnectPrisma, getPrisma } from '@/lib/db';
 import { getSeatAvailability, holdSeats, releaseExpiredHolds } from '@/lib/holds';
 import { CHECKOUT_MESSAGES, checkout, getCart, listOrders } from '@/lib/orders';
-import { TEST_CARDS } from '@/lib/payments';
 import { applyVenueLayout } from '@/lib/seating';
 import { resetDatabase } from './helpers';
 
 const prisma = getPrisma();
-const CARD = TEST_CARDS.approved;
 const MINUTE = 60_000;
 
 afterAll(disconnectPrisma);
@@ -83,27 +81,43 @@ describe('cart', () => {
   });
 });
 
-describe('checkout (SCRUM-39)', () => {
-  beforeEach(resetDatabase);
+/** Stands in for Stripe: every intent id is a successful payment for the cart's amount. */
+const verifyOk = vi.fn(async ({ paymentIntentId }: { paymentIntentId: string }) => ({
+  ok: true as const,
+  paymentRef: paymentIntentId,
+}));
+const noRefund = () => vi.fn().mockResolvedValue(undefined);
+const stripeDeps = () => ({ verify: verifyOk, refund: noRefund(), refundOwned: noRefund() });
 
-  it('charges the tier prices and turns the holds into sold tickets', async () => {
+describe('checkout (SCRUM-39)', () => {
+  beforeEach(async () => {
+    verifyOk.mockClear();
+    await resetDatabase();
+  });
+
+  it('verifies the payment at the tier prices and turns the holds into sold tickets', async () => {
     const s = await setup();
     await hold(s.eventId, 'ada', [s.floorB2, s.balconyA1]);
-    const pay = vi.fn().mockResolvedValue({ ok: true, paymentRef: 'pay_1' });
 
     const result = await checkout(
       prisma,
-      { eventId: s.eventId, userId: 'ada', cardNumber: CARD },
-      { pay },
+      { eventId: s.eventId, userId: 'ada', paymentIntentId: 'pi_1' },
+      stripeDeps(),
     );
 
     expect(result).toMatchObject({ ok: true, totalCents: 31600, currency: 'SGD', seats: 2 });
-    expect(pay).toHaveBeenCalledWith({ amountCents: 31600, currency: 'SGD', cardNumber: CARD });
+    expect(verifyOk).toHaveBeenCalledWith({
+      paymentIntentId: 'pi_1',
+      amountCents: 31600,
+      currency: 'SGD',
+      userId: 'ada',
+      eventId: s.eventId,
+    });
     const order = await prisma.order.findFirstOrThrow({ include: { tickets: true } });
     expect(order).toMatchObject({
       userId: 'ada',
       totalCents: 31600,
-      paymentRef: 'pay_1',
+      paymentRef: 'pi_1',
       status: 'PAID',
     });
     expect(order.tickets.map((t) => t.priceCents).sort()).toEqual([12800, 18800]);
@@ -116,7 +130,11 @@ describe('checkout (SCRUM-39)', () => {
   it('sold seats stay taken for everyone and are never released by the expiry job', async () => {
     const s = await setup();
     await hold(s.eventId, 'ada', [s.floorB2]);
-    await checkout(prisma, { eventId: s.eventId, userId: 'ada', cardNumber: CARD });
+    await checkout(
+      prisma,
+      { eventId: s.eventId, userId: 'ada', paymentIntentId: 'pi_1' },
+      stripeDeps(),
+    );
 
     const muchLater = new Date(Date.now() + 60 * MINUTE);
     expect(await releaseExpiredHolds(prisma, { now: muchLater })).toEqual([]);
@@ -135,7 +153,11 @@ describe('checkout (SCRUM-39)', () => {
   it('keeps the price paid even if the tier price changes later', async () => {
     const s = await setup();
     await hold(s.eventId, 'ada', [s.floorB2]);
-    await checkout(prisma, { eventId: s.eventId, userId: 'ada', cardNumber: CARD });
+    await checkout(
+      prisma,
+      { eventId: s.eventId, userId: 'ada', paymentIntentId: 'pi_1' },
+      stripeDeps(),
+    );
 
     await prisma.priceTier.updateMany({ data: { priceCents: 99900 } });
 
@@ -144,127 +166,167 @@ describe('checkout (SCRUM-39)', () => {
     expect(order.tickets[0].priceCents).toBe(18800);
   });
 
-  it('rejects an invalid card before charging anything', async () => {
+  it.each([undefined, '', 'not-an-intent', 42])(
+    'rejects a missing or malformed payment intent id (%s) without calling Stripe',
+    async (paymentIntentId) => {
+      const s = await setup();
+      await hold(s.eventId, 'ada', [s.floorB2]);
+      const deps = stripeDeps();
+
+      const result = await checkout(
+        prisma,
+        { eventId: s.eventId, userId: 'ada', paymentIntentId },
+        deps,
+      );
+
+      expect(result).toMatchObject({ ok: false, code: 'payment-failed' });
+      expect(deps.verify).not.toHaveBeenCalled();
+    },
+  );
+
+  it('an unpaid payment sells nothing and leaves the seats held so the fan can retry', async () => {
     const s = await setup();
     await hold(s.eventId, 'ada', [s.floorB2]);
-    const pay = vi.fn();
+    const deps = {
+      ...stripeDeps(),
+      verify: vi.fn().mockResolvedValue({ ok: false, code: 'payment-failed' }),
+    };
 
     const result = await checkout(
       prisma,
-      { eventId: s.eventId, userId: 'ada', cardNumber: '1234' },
-      { pay },
+      { eventId: s.eventId, userId: 'ada', paymentIntentId: 'pi_1' },
+      deps,
     );
 
-    expect(result).toEqual({
-      ok: false,
-      code: 'invalid-card',
-      message: CHECKOUT_MESSAGES['invalid-card'],
-    });
-    expect(pay).not.toHaveBeenCalled();
-  });
-
-  it('a declined card sells nothing and leaves the seats held so the fan can retry', async () => {
-    const s = await setup();
-    await hold(s.eventId, 'ada', [s.floorB2]);
-
-    const result = await checkout(prisma, {
-      eventId: s.eventId,
-      userId: 'ada',
-      cardNumber: TEST_CARDS.declined,
-    });
-
-    expect(result).toMatchObject({ ok: false, code: 'declined' });
+    expect(result).toMatchObject({ ok: false, code: 'payment-failed' });
+    expect(deps.refundOwned).not.toHaveBeenCalled();
     expect(await prisma.order.count()).toBe(0);
     expect(await getCart(prisma, { eventId: s.eventId, userId: 'ada' })).not.toBeNull();
   });
 
-  it('an expired hold cannot be checked out, and nothing is charged', async () => {
+  it('a payment for a different amount is refunded and sells nothing', async () => {
     const s = await setup();
-    const expiresAt = await hold(s.eventId, 'ada', [s.floorB2]);
-    const pay = vi.fn();
+    await hold(s.eventId, 'ada', [s.floorB2]);
+    const deps = {
+      ...stripeDeps(),
+      verify: vi.fn().mockResolvedValue({ ok: false, code: 'payment-mismatch' }),
+    };
 
     const result = await checkout(
       prisma,
-      { eventId: s.eventId, userId: 'ada', cardNumber: CARD },
-      { pay, clock: () => expiresAt },
+      { eventId: s.eventId, userId: 'ada', paymentIntentId: 'pi_1' },
+      deps,
+    );
+
+    expect(result).toMatchObject({ ok: false, code: 'payment-mismatch' });
+    expect(deps.refundOwned).toHaveBeenCalledWith('pi_1', 'ada');
+    expect(await prisma.order.count()).toBe(0);
+  });
+
+  it('expired holds cannot be checked out, and a payment already taken is refunded', async () => {
+    const s = await setup();
+    const expiresAt = await hold(s.eventId, 'ada', [s.floorB2]);
+    const deps = stripeDeps();
+
+    const result = await checkout(
+      prisma,
+      { eventId: s.eventId, userId: 'ada', paymentIntentId: 'pi_1' },
+      { ...deps, clock: () => expiresAt },
     );
 
     expect(result).toMatchObject({ ok: false, code: 'no-holds' });
-    expect(pay).not.toHaveBeenCalled();
+    expect(deps.verify).not.toHaveBeenCalled();
+    expect(deps.refundOwned).toHaveBeenCalledWith('pi_1', 'ada');
   });
 
-  it('a hold that lapses while the card is charged is refunded and nothing is sold', async () => {
+  it('a hold that lapses while paying is refunded and nothing is sold', async () => {
     const s = await setup();
     const expiresAt = await hold(s.eventId, 'ada', [s.floorB2, s.floorA3]);
     // Priced just before expiry; the conversion happens just after it.
     const times = [expiresAt.getTime() - 2000, expiresAt.getTime() - 1000, expiresAt.getTime()];
     const clock = () => new Date(times.shift() ?? expiresAt.getTime());
-    const refund = vi.fn().mockResolvedValue(undefined);
+    const deps = stripeDeps();
 
     const result = await checkout(
       prisma,
-      { eventId: s.eventId, userId: 'ada', cardNumber: CARD },
-      { pay: async () => ({ ok: true, paymentRef: 'pay_late' }), refund, clock },
+      { eventId: s.eventId, userId: 'ada', paymentIntentId: 'pi_late' },
+      { ...deps, clock },
     );
 
     expect(result).toEqual({ ok: false, code: 'expired', message: CHECKOUT_MESSAGES.expired });
-    expect(refund).toHaveBeenCalledWith('pay_late');
+    expect(deps.refund).toHaveBeenCalledWith('pi_late');
     expect(await prisma.order.count()).toBe(0);
     expect(await prisma.seatReservation.count({ where: { status: 'SOLD' } })).toBe(0);
+  });
+
+  it('submitting the same payment twice returns the same order and sells once', async () => {
+    const s = await setup();
+    await hold(s.eventId, 'ada', [s.floorB2]);
+    const deps = stripeDeps();
+    const request = { eventId: s.eventId, userId: 'ada', paymentIntentId: 'pi_1' };
+
+    const first = await checkout(prisma, request, deps);
+    const second = await checkout(prisma, request, deps);
+
+    expect(second).toEqual(first);
+    expect(await prisma.order.count()).toBe(1);
+    expect(deps.refund).not.toHaveBeenCalled();
+  });
+
+  it("one fan cannot claim another fan's payment", async () => {
+    const s = await setup();
+    await hold(s.eventId, 'ada', [s.floorB2]);
+    await hold(s.eventId, 'bo', [s.floorA3]);
+    await checkout(
+      prisma,
+      { eventId: s.eventId, userId: 'ada', paymentIntentId: 'pi_ada' },
+      stripeDeps(),
+    );
+
+    const result = await checkout(
+      prisma,
+      { eventId: s.eventId, userId: 'bo', paymentIntentId: 'pi_ada' },
+      stripeDeps(),
+    );
+
+    expect(result).toMatchObject({ ok: false, code: 'payment-failed' });
+    expect(await prisma.order.count()).toBe(1);
   });
 
   it('two simultaneous checkouts of one cart sell it once and refund the other', async () => {
     const s = await setup();
     await hold(s.eventId, 'ada', [s.floorB2]);
+    const deps = stripeDeps();
     let n = 0;
-    const pay = async () => ({ ok: true as const, paymentRef: `pay_${++n}` });
-    const refund = vi.fn().mockResolvedValue(undefined);
     const attempt = () =>
-      checkout(prisma, { eventId: s.eventId, userId: 'ada', cardNumber: CARD }, { pay, refund });
+      checkout(prisma, { eventId: s.eventId, userId: 'ada', paymentIntentId: `pi_${++n}` }, deps);
 
     const results = await Promise.all([attempt(), attempt()]);
 
     expect(results.filter((r) => r.ok)).toHaveLength(1);
     expect(results.find((r) => !r.ok)).toMatchObject({ code: 'expired' });
-    expect(refund).toHaveBeenCalledTimes(1);
+    expect(deps.refund).toHaveBeenCalledTimes(1);
     expect(await prisma.order.count()).toBe(1);
     expect(await prisma.ticket.count()).toBe(1);
-  });
-
-  it('refunds, then reports, any unexpected failure while saving the order', async () => {
-    const s = await setup();
-    await hold(s.eventId, 'ada', [s.floorB2]);
-    await hold(s.eventId, 'bo', [s.floorA3]);
-    const pay = async () => ({ ok: true as const, paymentRef: 'pay_dup' }); // provider bug: reused ref
-    const refund = vi.fn().mockResolvedValue(undefined);
-    await checkout(prisma, { eventId: s.eventId, userId: 'ada', cardNumber: CARD }, { pay });
-
-    await expect(
-      checkout(prisma, { eventId: s.eventId, userId: 'bo', cardNumber: CARD }, { pay, refund }),
-    ).rejects.toThrow();
-
-    expect(refund).toHaveBeenCalledWith('pay_dup');
-    // Rolled back: Bo's seat is still only held, not sold.
-    expect(await prisma.seatReservation.findFirst({ where: { userId: 'bo' } })).toMatchObject({
-      status: 'HELD',
-    });
   });
 
   it.each([
     ['an unknown event', { status: 'ON_SALE' as const }, 'nope'],
     ['an event no longer on sale', { status: 'CANCELLED' as const }, null],
-  ])('refuses %s', async (_label, update, eventIdOverride) => {
+  ])('refuses %s and refunds any payment', async (_label, update, eventIdOverride) => {
     const s = await setup();
     await hold(s.eventId, 'ada', [s.floorB2]);
     await prisma.event.update({ where: { id: s.eventId }, data: update });
+    const deps = stripeDeps();
 
-    const result = await checkout(prisma, {
-      eventId: eventIdOverride ?? s.eventId,
-      userId: 'ada',
-      cardNumber: CARD,
-    });
+    const result = await checkout(
+      prisma,
+      { eventId: eventIdOverride ?? s.eventId, userId: 'ada', paymentIntentId: 'pi_1' },
+      deps,
+    );
 
     expect(result).toMatchObject({ ok: false, code: 'not-on-sale' });
+    expect(deps.refundOwned).toHaveBeenCalledWith('pi_1', 'ada');
   });
 });
 
@@ -274,9 +336,17 @@ describe('my tickets (SCRUM-40)', () => {
   it("lists only the fan's own orders, newest first, with event, seats and date", async () => {
     const s = await setup();
     await hold(s.eventId, 'ada', [s.floorB2, s.floorA3]);
-    await checkout(prisma, { eventId: s.eventId, userId: 'ada', cardNumber: CARD });
+    await checkout(
+      prisma,
+      { eventId: s.eventId, userId: 'ada', paymentIntentId: 'pi_1' },
+      stripeDeps(),
+    );
     await hold(s.eventId, 'ada', [s.balconyA1]);
-    await checkout(prisma, { eventId: s.eventId, userId: 'ada', cardNumber: CARD });
+    await checkout(
+      prisma,
+      { eventId: s.eventId, userId: 'ada', paymentIntentId: 'pi_2' },
+      stripeDeps(),
+    );
 
     const orders = await listOrders(prisma, 'ada');
 

@@ -1,68 +1,108 @@
-import { randomBytes } from 'node:crypto';
+import Stripe from 'stripe';
 
 /**
- * Simulated card payments (SCRUM-39). No real provider and no money moves: the card
- * number only picks the outcome, and it is never stored or logged. Test cards follow
- * Stripe's conventions so the demo feels familiar:
- *   4242 4242 4242 4242  → approved
- *   4000 0000 0000 0002  → declined
- * Any other 16-digit number that passes the Luhn checksum is approved.
+ * Card payments through Stripe (test mode in dev and CI; live keys in production).
+ *
+ * The card number never touches our server: Stripe's Payment Element collects it in an
+ * iframe and confirms a PaymentIntent that we created for the cart's server-side total.
+ * After that, checkout() calls verifyPayment() to confirm with Stripe that the intent
+ * really succeeded, for this user, this event and this amount, before selling any seats.
+ *
+ * Stripe test cards: 4242 4242 4242 4242 (approved), 4000 0000 0000 0002 (declined),
+ * 4000 0025 0000 3155 (needs 3-D Secure). Any future expiry, any CVC.
  */
 
-export const TEST_CARDS = {
-  approved: '4242424242424242',
-  declined: '4000000000000002',
-} as const;
+export type PaymentFailureCode = 'payment-failed' | 'payment-mismatch';
 
-export type ChargeResult =
-  { ok: true; paymentRef: string } | { ok: false; code: 'declined' | 'invalid-card' };
+export type VerifyResult =
+  { ok: true; paymentRef: string } | { ok: false; code: PaymentFailureCode };
 
-export interface ChargeRequest {
+export interface PaymentExpectation {
   amountCents: number;
   currency: string;
-  cardNumber: string;
+  userId: string;
+  eventId: string;
 }
 
-/** Luhn (mod 10) checksum, which every real card number satisfies. */
-export function passesLuhn(digits: string): boolean {
-  let sum = 0;
-  for (let i = 0; i < digits.length; i++) {
-    let d = Number(digits[digits.length - 1 - i]);
-    if (i % 2 === 1) {
-      d *= 2;
-      if (d > 9) d -= 9;
-    }
-    sum += d;
-  }
-  return sum % 10 === 0;
+export interface VerifyRequest extends PaymentExpectation {
+  paymentIntentId: string;
+}
+
+let stripeClient: Stripe | undefined;
+
+/** Lazy, so `next build` and tests that never charge don't need a Stripe key. */
+export function getStripe(): Stripe {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) throw new Error('STRIPE_SECRET_KEY is not set');
+  stripeClient ??= new Stripe(key);
+  return stripeClient;
+}
+
+/** Start a payment for a cart. The browser confirms it with the returned client secret. */
+export async function createPaymentIntent(
+  { amountCents, currency, userId, eventId }: PaymentExpectation,
+  stripe: Stripe = getStripe(),
+): Promise<{ id: string; clientSecret: string }> {
+  const intent = await stripe.paymentIntents.create({
+    amount: amountCents,
+    currency: currency.toLowerCase(),
+    allowed_payment_method_types: ['card'],
+    metadata: { userId, eventId },
+  });
+  if (!intent.client_secret) throw new Error('Stripe returned no client secret');
+  return { id: intent.id, clientSecret: intent.client_secret };
 }
 
 /**
- * Normalise what a fan typed ("4242 4242 4242 4242", "4242-4242-…") to 16 digits,
- * or null if it can't be a card number.
+ * Ask Stripe whether a PaymentIntent was paid, and that it belongs to this purchase.
+ * Resolves (never throws) for payment problems, so a bad or foreign intent id from the
+ * browser is just a failed payment.
  */
-export function parseCardNumber(input: unknown): string | null {
-  if (typeof input !== 'string') return null;
-  const digits = input.replace(/[\s-]/g, '');
-  if (!/^\d{16}$/.test(digits)) return null;
-  return passesLuhn(digits) ? digits : null;
-}
-
-/** Charge a card. Resolves (never throws) with the outcome, like a provider's API. */
-export async function chargeCard({
-  amountCents,
-  cardNumber,
-}: ChargeRequest): Promise<ChargeResult> {
-  const card = parseCardNumber(cardNumber);
-  if (!card || !Number.isInteger(amountCents) || amountCents < 0) {
-    return { ok: false, code: 'invalid-card' };
+export async function verifyPayment(
+  { paymentIntentId, amountCents, currency, userId, eventId }: VerifyRequest,
+  stripe: Stripe = getStripe(),
+): Promise<VerifyResult> {
+  let intent: Stripe.PaymentIntent;
+  try {
+    intent = await stripe.paymentIntents.retrieve(paymentIntentId);
+  } catch {
+    return { ok: false, code: 'payment-failed' };
   }
-  if (card === TEST_CARDS.declined) return { ok: false, code: 'declined' };
-  return { ok: true, paymentRef: `pay_${randomBytes(12).toString('hex')}` };
+  // Someone else's payment (or one for another event): never ours to use or refund.
+  if (intent.metadata.userId !== userId || intent.metadata.eventId !== eventId) {
+    return { ok: false, code: 'payment-failed' };
+  }
+  if (intent.status !== 'succeeded') return { ok: false, code: 'payment-failed' };
+  // Paid, but for a different cart (e.g. seats changed after the intent was created).
+  if (intent.amount !== amountCents || intent.currency !== currency.toLowerCase()) {
+    return { ok: false, code: 'payment-mismatch' };
+  }
+  return { ok: true, paymentRef: intent.id };
 }
 
 /** Give a payment back, e.g. when the seats lapsed while the card was being charged. */
-export async function refundPayment(paymentRef: string): Promise<void> {
-  // Simulated: a real provider call goes here. Logged so the demo shows it happening.
-  console.info(`Refunded simulated payment ${paymentRef}`);
+export async function refundPayment(
+  paymentRef: string,
+  stripe: Stripe = getStripe(),
+): Promise<void> {
+  await stripe.refunds.create({ payment_intent: paymentRef });
+}
+
+/**
+ * Refund a payment that can't be turned into an order (the holds lapsed, or the event went
+ * off sale, before checkout could see it), but only if it succeeded and is this user's.
+ */
+export async function refundOwnedPayment(
+  paymentIntentId: string,
+  userId: string,
+  stripe: Stripe = getStripe(),
+): Promise<void> {
+  let intent: Stripe.PaymentIntent;
+  try {
+    intent = await stripe.paymentIntents.retrieve(paymentIntentId);
+  } catch {
+    return;
+  }
+  if (intent.metadata.userId !== userId || intent.status !== 'succeeded') return;
+  await refundPayment(intent.id, stripe);
 }

@@ -1,82 +1,101 @@
+import type Stripe from 'stripe';
 import { describe, expect, it, vi } from 'vitest';
-import { TEST_CARDS, chargeCard, parseCardNumber, passesLuhn, refundPayment } from '@/lib/payments';
+import {
+  createPaymentIntent,
+  refundOwnedPayment,
+  refundPayment,
+  verifyPayment,
+} from '@/lib/payments';
 
-describe('passesLuhn', () => {
-  it.each([
-    [TEST_CARDS.approved, true],
-    [TEST_CARDS.declined, true],
-    ['4242424242424241', false], // last digit off by one
-    ['0000000000000000', true],
-  ])('%s → %s', (digits, ok) => {
-    expect(passesLuhn(digits)).toBe(ok);
+const EXPECTED = { amountCents: 13600, currency: 'SGD', userId: 'ada', eventId: 'evt' };
+
+function fakeStripe(intent?: Partial<Stripe.PaymentIntent> | Error) {
+  const retrieve = vi.fn(async () => {
+    if (intent instanceof Error) throw intent;
+    return {
+      id: 'pi_1',
+      status: 'succeeded',
+      amount: 13600,
+      currency: 'sgd',
+      metadata: { userId: 'ada', eventId: 'evt' },
+      ...intent,
+    };
+  });
+  const create = vi.fn(async () => ({ id: 'pi_new', client_secret: 'pi_new_secret' }));
+  const refund = vi.fn(async () => ({}));
+  const stripe = {
+    paymentIntents: { retrieve, create },
+    refunds: { create: refund },
+  } as unknown as Stripe;
+  return { stripe, retrieve, create, refund };
+}
+
+describe('createPaymentIntent', () => {
+  it('creates an intent for the amount, tagged with user and event', async () => {
+    const { stripe, create } = fakeStripe();
+
+    const result = await createPaymentIntent(EXPECTED, stripe);
+
+    expect(result).toEqual({ id: 'pi_new', clientSecret: 'pi_new_secret' });
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: 13600,
+        currency: 'sgd',
+        metadata: { userId: 'ada', eventId: 'evt' },
+      }),
+    );
   });
 });
 
-// Equivalence partitions: valid card · wrong length · non-digits · bad checksum · not a string.
-describe('parseCardNumber', () => {
+describe('verifyPayment', () => {
+  const request = { paymentIntentId: 'pi_1', ...EXPECTED };
+
+  it('accepts a succeeded intent for this user, event and amount', async () => {
+    const { stripe } = fakeStripe();
+    expect(await verifyPayment(request, stripe)).toEqual({ ok: true, paymentRef: 'pi_1' });
+  });
+
   it.each([
-    ['plain 16 digits', '4242424242424242', '4242424242424242'],
-    ['grouped with spaces', '4242 4242 4242 4242', '4242424242424242'],
-    ['grouped with hyphens', '4242-4242-4242-4242', '4242424242424242'],
-    ['15 digits (below boundary)', '424242424242424', null],
-    ['17 digits (above boundary)', '42424242424242420', null],
-    ['letters', '4242 4242 4242 424a', null],
-    ['fails the checksum', '4242424242424241', null],
-    ['empty', '', null],
-    ['not a string', 4242424242424242, null],
-    ['missing', null, null],
-  ])('%s', (_label, input, expected) => {
-    expect(parseCardNumber(input)).toBe(expected);
+    ['not yet paid', { status: 'requires_payment_method' as const }],
+    ['another fan', { metadata: { userId: 'bo', eventId: 'evt' } }],
+    ['another event', { metadata: { userId: 'ada', eventId: 'other' } }],
+  ])('rejects an intent that is %s', async (_label, intent) => {
+    const { stripe } = fakeStripe(intent);
+    expect(await verifyPayment(request, stripe)).toEqual({ ok: false, code: 'payment-failed' });
+  });
+
+  it.each([
+    ['amount', { amount: 100 }],
+    ['currency', { currency: 'usd' }],
+  ])('flags a paid intent with the wrong %s as a mismatch', async (_label, intent) => {
+    const { stripe } = fakeStripe(intent);
+    expect(await verifyPayment(request, stripe)).toEqual({ ok: false, code: 'payment-mismatch' });
+  });
+
+  it('treats an unknown intent id as a failed payment', async () => {
+    const { stripe } = fakeStripe(new Error('No such payment_intent'));
+    expect(await verifyPayment(request, stripe)).toEqual({ ok: false, code: 'payment-failed' });
   });
 });
 
-describe('chargeCard (simulated provider)', () => {
-  const request = { amountCents: 18800, currency: 'SGD' };
-
-  it('approves the success test card with a unique payment reference', async () => {
-    const a = await chargeCard({ ...request, cardNumber: TEST_CARDS.approved });
-    const b = await chargeCard({ ...request, cardNumber: TEST_CARDS.approved });
-    expect(a).toMatchObject({ ok: true, paymentRef: expect.stringMatching(/^pay_[0-9a-f]{24}$/) });
-    expect(a.ok && b.ok && a.paymentRef !== b.paymentRef).toBe(true);
+describe('refunds', () => {
+  it('refundPayment refunds the intent in full', async () => {
+    const { stripe, refund } = fakeStripe();
+    await refundPayment('pi_1', stripe);
+    expect(refund).toHaveBeenCalledWith({ payment_intent: 'pi_1' });
   });
 
-  it('approves any other valid card number', async () => {
-    expect(await chargeCard({ ...request, cardNumber: '5555 5555 5555 4444' })).toMatchObject({
-      ok: true,
-    });
-  });
+  it('refundOwnedPayment refunds only a succeeded intent that is the users own', async () => {
+    const mine = fakeStripe();
+    await refundOwnedPayment('pi_1', 'ada', mine.stripe);
+    expect(mine.refund).toHaveBeenCalledTimes(1);
 
-  it('declines the decline test card', async () => {
-    expect(await chargeCard({ ...request, cardNumber: TEST_CARDS.declined })).toEqual({
-      ok: false,
-      code: 'declined',
-    });
-  });
-
-  // Boundary values for the amount: 0 is a valid (free) order, negatives and fractions are not.
-  it.each([
-    [0, true],
-    [1, true],
-    [-1, false],
-    [10.5, false],
-  ])('amount %s cents accepted=%s', async (amountCents, ok) => {
-    const result = await chargeCard({ ...request, amountCents, cardNumber: TEST_CARDS.approved });
-    expect(result.ok).toBe(ok);
-  });
-
-  it('rejects an invalid card without charging it', async () => {
-    expect(await chargeCard({ ...request, cardNumber: '1234' })).toEqual({
-      ok: false,
-      code: 'invalid-card',
-    });
-  });
-});
-
-describe('refundPayment (simulated provider)', () => {
-  it('records the refund for the given payment', async () => {
-    const log = vi.spyOn(console, 'info').mockImplementation(() => {});
-    await refundPayment('pay_abc');
-    expect(log).toHaveBeenCalledWith('Refunded simulated payment pay_abc');
-    log.mockRestore();
+    const theirs = fakeStripe();
+    await refundOwnedPayment('pi_1', 'bo', theirs.stripe);
+    const unpaid = fakeStripe({ status: 'requires_payment_method' });
+    await refundOwnedPayment('pi_1', 'ada', unpaid.stripe);
+    const missing = fakeStripe(new Error('missing'));
+    await refundOwnedPayment('pi_x', 'ada', missing.stripe);
+    for (const f of [theirs, unpaid, missing]) expect(f.refund).not.toHaveBeenCalled();
   });
 });

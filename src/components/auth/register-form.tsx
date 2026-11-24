@@ -43,6 +43,17 @@ export function RegisterForm() {
         hint={`${PASSWORD_MIN}–${PASSWORD_MAX} characters`}
         error={state.fieldErrors?.password}
       />
+      <fieldset className="flex flex-col gap-2">
+        <legend className="mb-1 text-sm font-medium">I want to</legend>
+        <label className="flex items-center gap-2 text-sm font-normal">
+          <input type="radio" name="accountType" value="fan" defaultChecked />
+          Buy tickets
+        </label>
+        <label className="flex items-center gap-2 text-sm font-normal">
+          <input type="radio" name="accountType" value="organiser" />
+          Sell tickets as an organiser (create and publish events)
+        </label>
+      </fieldset>
       <SubmitButton pending={pending}>Create account</SubmitButton>
     </form>
   );

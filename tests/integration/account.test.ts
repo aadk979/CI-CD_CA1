@@ -64,6 +64,51 @@ describe('registerAccount', () => {
     expect(stored).toMatch(/^[0-9a-f]+:[0-9a-f]+$/); // scrypt "salt:hash"
   });
 
+  it('signs up a fan by default, and ignores a role smuggled into the form', async () => {
+    const result = await registerAccount(
+      auth,
+      { ...FAN, role: 'ORGANISER' } as Record<string, string>,
+      new Headers(),
+      prisma,
+    );
+
+    expect(result).toEqual({ ok: true });
+    expect(await prisma.user.findUniqueOrThrow({ where: { email: FAN.email } })).toMatchObject({
+      role: 'FAN',
+    });
+  });
+
+  it('signs up an organiser when asked, so they can reach the back office straight away', async () => {
+    const result = await registerAccount(
+      auth,
+      { ...FAN, accountType: 'organiser' },
+      new Headers(),
+      prisma,
+    );
+
+    expect(result).toEqual({ ok: true, organiser: true });
+    expect(await prisma.user.findUniqueOrThrow({ where: { email: FAN.email } })).toMatchObject({
+      role: 'ORGANISER',
+    });
+  });
+
+  it('does not make an organiser when validation fails or the email is taken', async () => {
+    await registerAccount(auth, FAN, new Headers(), prisma);
+
+    const taken = await registerAccount(
+      auth,
+      { ...FAN, accountType: 'organiser' },
+      new Headers(),
+      prisma,
+    );
+
+    expect(taken.ok).toBe(false);
+    // The existing fan account must not be upgraded by someone re-registering its email.
+    expect(await prisma.user.findUniqueOrThrow({ where: { email: FAN.email } })).toMatchObject({
+      role: 'FAN',
+    });
+  });
+
   it('rejects a duplicate email regardless of case, against the email field', async () => {
     await registerAccount(auth, FAN, new Headers());
 

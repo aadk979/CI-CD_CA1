@@ -164,6 +164,10 @@ jobs:
       - name: Production build
         run: npm run build
       - name: Playwright
+        # Stripe test-mode keys: the checkout e2e pays with Stripe's 4242 test card.
+        env:
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_PUBLISHABLE_KEY: ${{ secrets.STRIPE_PUBLISHABLE_KEY }}
         run: npm run test:e2e
       - uses: actions/upload-artifact@v7
         if: always()
