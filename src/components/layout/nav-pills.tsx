@@ -17,7 +17,7 @@ const isActive = (pathname: string, href: string) =>
 const group =
   'flex flex-col gap-1 rounded-card border border-hairline bg-surface/70 p-1 md:flex-row md:rounded-full';
 const item =
-  'relative flex h-9 items-center rounded-btn px-4 text-sm font-medium transition-colors md:h-8 md:rounded-full';
+  'relative flex h-9 items-center whitespace-nowrap rounded-btn px-4 text-sm font-medium transition-colors md:h-8 md:rounded-full';
 
 /** The centred "nav-pill-group": the active segment is a raised pill that slides between items. */
 export function NavPills() {
