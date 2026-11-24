@@ -5,7 +5,7 @@ import { isOrganiser } from '@/lib/account';
 import { getCurrentUser } from '@/server/session';
 
 const linkClass =
-  'flex h-9 items-center rounded-btn px-3 text-sm font-medium text-body transition hover:bg-surface-2 hover:text-ink md:h-8';
+  'flex h-9 items-center whitespace-nowrap rounded-btn px-3 text-sm font-medium text-body transition hover:bg-surface-2 hover:text-ink md:h-8';
 
 /** Reads the session cookie, so it must render inside <Suspense> (see site header). */
 export async function UserMenu() {
@@ -27,7 +27,7 @@ export async function UserMenu() {
   return (
     <nav aria-label="Account" className="flex flex-col gap-2 md:flex-row md:items-center md:gap-1">
       <span
-        className="text-muted flex items-center gap-2 px-3 text-sm md:mr-2 md:px-0"
+        className="text-muted flex items-center gap-2 px-3 text-sm whitespace-nowrap md:mr-2 md:px-0"
         data-testid="signed-in-as"
       >
         <span
@@ -37,8 +37,8 @@ export async function UserMenu() {
           {user.name.trim().charAt(0).toUpperCase() || '?'}
         </span>
         <span>
-          <span className="sr-only md:not-sr-only lg:sr-only xl:not-sr-only">Signed in as </span>
-          <span className="text-ink font-medium">{user.name}</span>
+          <span className="sr-only xl:not-sr-only">Signed in as </span>
+          <span className="text-ink sr-only font-medium lg:not-sr-only">{user.name}</span>
         </span>
       </span>
       {isOrganiser(user) && (

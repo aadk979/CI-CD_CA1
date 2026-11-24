@@ -5,14 +5,15 @@ import { Logo } from './logo';
 import { NavPills, NavPillsFallback } from './nav-pills';
 import { SiteMenu } from './site-menu';
 
-/** 64px top bar: logo, centred pill-group nav, account actions; hamburger on mobile. */
+/** 64px top bar: logo, pill-group nav, account actions pinned right; hamburger on mobile. */
 export function SiteHeader() {
   return (
     <header className="border-hairline bg-canvas/80 sticky top-0 z-50 border-b backdrop-blur-xl">
       <div className={`${container} h-nav relative flex items-center gap-6`}>
         <Logo />
         <SiteMenu>
-          <div className="lg:absolute lg:left-1/2 lg:-translate-x-1/2">
+          {/* In flow (not absolutely centred) so a wide account block can never overlap it. */}
+          <div className="md:mx-auto">
             {/* The active pill depends on the URL, which dynamic routes only know at request time. */}
             <Suspense fallback={<NavPillsFallback />}>
               <NavPills />
