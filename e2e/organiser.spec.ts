@@ -79,7 +79,7 @@ test.describe('Organiser access (SCRUM-24)', () => {
 });
 
 test.describe('Create and publish an event (SCRUM-28)', () => {
-  test('an organiser creates a draft, previews it, then publishes it to the home page', async ({
+  test('an organiser creates a draft, previews it, then publishes it to the catalogue', async ({
     browser,
   }) => {
     const email = uniqueEmail();
@@ -113,9 +113,9 @@ test.describe('Create and publish an event (SCRUM-28)', () => {
 
     // Fans can't see a draft: not listed, and its page is "not found" (like an unknown
     // event, the streamed shell keeps status 200 and the page is marked noindex). Visiting
-    // the home page now also fills its cache, which publishing must then expire.
+    // the event catalogue now also fills its cache, which publishing must then expire.
     const visitor = await (await browser.newContext()).newPage();
-    await visitor.goto('/');
+    await visitor.goto('/events');
     await expect(visitor.getByTestId('event-list')).not.toContainText(title);
     await visitor.goto(eventPath);
     await expect(visitor.getByRole('heading', { name: 'Event not found' })).toBeVisible();
@@ -131,8 +131,8 @@ test.describe('Create and publish an event (SCRUM-28)', () => {
     await expect(row.getByTestId('event-status')).toHaveText('On sale');
     await expect(row.getByRole('button', { name: /Publish/ })).toHaveCount(0);
 
-    // On the home page straight away (cache expired on publish), with its price.
-    await visitor.goto('/');
+    // In the catalogue straight away (cache expired on publish), with its price.
+    await visitor.goto('/events');
     await visitor.getByRole('link', { name: title }).click();
     await expect(visitor).toHaveURL(eventPath);
     await expect(visitor.getByRole('list', { name: 'Ticket prices' })).toHaveText(

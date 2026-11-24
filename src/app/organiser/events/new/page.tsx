@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { Suspense } from 'react';
 import { EventForm } from '@/components/organiser/event-form';
+import { BackLink, PageHeading, PageShell } from '@/components/ui/page';
+import { card } from '@/components/ui/styles';
 import { getPrisma } from '@/lib/db';
 import { toDateTimeLocal } from '@/lib/event-form';
 import { listVenues } from '@/lib/organiser';
@@ -14,21 +15,27 @@ async function NewEvent() {
   const venues = await listVenues(getPrisma());
 
   if (venues.length === 0) {
-    return <p className="text-zinc-500">Add a venue before creating events.</p>;
+    return <p className="text-body">Add a venue before creating events.</p>;
   }
   return <EventForm venues={venues} minStartsAt={toDateTimeLocal(new Date())} />;
 }
 
 export default function NewEventPage() {
   return (
-    <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-10">
-      <Link href="/organiser" className="text-sm text-zinc-500 hover:underline">
-        ← All events
-      </Link>
-      <h1 className="mt-2 mb-8 text-3xl font-semibold tracking-tight">New event</h1>
-      <Suspense fallback={<p className="text-zinc-500">Loading…</p>}>
-        <NewEvent />
-      </Suspense>
-    </main>
+    <PageShell width="narrow">
+      <BackLink href="/organiser">All events</BackLink>
+      <div className="mt-6">
+        <PageHeading
+          eyebrow="Organiser"
+          title="New event"
+          lead="Saved as a draft first, so you can preview the seat map before fans see it."
+        />
+      </div>
+      <div className={`${card} p-6 md:p-8`}>
+        <Suspense fallback={<div className="skeleton h-96 w-full" aria-busy />}>
+          <NewEvent />
+        </Suspense>
+      </div>
+    </PageShell>
   );
 }

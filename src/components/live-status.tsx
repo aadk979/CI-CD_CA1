@@ -13,9 +13,9 @@ const LABELS: Record<ConnectionState, string> = {
 };
 
 const DOT: Record<ConnectionState, string> = {
-  connecting: 'bg-amber-400',
-  live: 'bg-emerald-500',
-  offline: 'bg-red-500',
+  connecting: 'bg-amber-soft',
+  live: 'bg-live animate-live-pulse',
+  offline: 'bg-danger',
 };
 
 /** Shows the WebSocket connection state and the latest worker heartbeat. */
@@ -37,14 +37,17 @@ export function LiveStatus() {
   }, []);
 
   return (
-    <div className="flex items-center gap-3 text-sm text-zinc-600 dark:text-zinc-400">
-      <span className="flex items-center gap-2" data-testid="connection-status">
+    <div className="border-hairline bg-surface/80 text-muted inline-flex flex-wrap items-center gap-3 rounded-full border px-3 py-1.5 text-xs backdrop-blur">
+      <span
+        className="text-ink flex items-center gap-2 font-semibold"
+        data-testid="connection-status"
+      >
         <span className={`h-2 w-2 rounded-full ${DOT[state]}`} aria-hidden />
         {LABELS[state]}
       </span>
       {lastHeartbeat && (
         <span data-testid="worker-heartbeat">
-          · worker seen {new Date(lastHeartbeat).toLocaleTimeString()}
+          Worker heartbeat {new Date(lastHeartbeat).toLocaleTimeString()}
         </span>
       )}
     </div>

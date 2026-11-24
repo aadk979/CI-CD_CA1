@@ -3,6 +3,8 @@ import { notFound, redirect } from 'next/navigation';
 import { Suspense } from 'react';
 import { HoldCountdown } from '@/components/seats/hold-countdown';
 import { SeatPicker } from '@/components/seats/seat-picker';
+import { BackLink, PageShell } from '@/components/ui/page';
+import { notice } from '@/components/ui/styles';
 import { MAX_SEATS_PER_ORDER } from '@/lib/config';
 import { getPrisma } from '@/lib/db';
 import { isOrganiser } from '@/lib/account';
@@ -45,18 +47,25 @@ async function EventDetails({ params }: Pick<PageProps<'/events/[slug]'>, 'param
 
   return (
     <>
-      <header className="mb-8">
-        <h1 className="text-3xl font-semibold tracking-tight">{map.event.title}</h1>
-        <p className="mt-2 text-zinc-600 dark:text-zinc-400" data-testid="event-when-where">
+      <header className="mb-10">
+        <p className="text-violet-soft mb-3 text-xs font-semibold tracking-[0.14em] uppercase">
+          {onSale ? 'On sale now' : draft ? 'Draft' : 'Event'}
+        </p>
+        <h1 className="font-display text-display-sm text-ink md:text-display-lg font-semibold">
+          {map.event.title}
+        </h1>
+        <p className="text-body mt-3" data-testid="event-when-where">
           {formatEventDate(map.event.startsAt)} · {map.venue.name}, {map.venue.city}
         </p>
-        {map.event.description && <p className="mt-4 max-w-2xl">{map.event.description}</p>}
+        {map.event.description && (
+          <p className="text-body mt-4 max-w-2xl">{map.event.description}</p>
+        )}
         {tiers.length > 0 && (
-          <ul className="mt-4 flex flex-wrap gap-2 text-sm" aria-label="Ticket prices">
+          <ul className="mt-6 flex flex-wrap gap-2 text-sm" aria-label="Ticket prices">
             {tiers.map((t) => (
               <li
                 key={`${t.name}-${t.cents}`}
-                className="rounded-full border border-zinc-200 px-3 py-1 dark:border-zinc-800"
+                className="border-hairline-strong bg-surface text-ink rounded-full border px-3 py-1 font-medium"
               >
                 {t.name} · {formatPrice(t.cents, t.currency)}
               </li>
@@ -66,20 +75,14 @@ async function EventDetails({ params }: Pick<PageProps<'/events/[slug]'>, 'param
       </header>
 
       {access?.via === 'pass' && (
-        <p
-          className="mb-6 rounded-md bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200"
-          data-testid="access-pass"
-        >
+        <p className={`${notice.success} mb-6`} data-testid="access-pass">
           You&apos;re in! Pick your seats before your turn ends in{' '}
           <HoldCountdown expiresAt={access.passExpiresAt.toISOString()} testId="pass-countdown" />.
         </p>
       )}
 
       {draft ? (
-        <p
-          className="mb-6 rounded-md bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200"
-          data-testid="draft-preview"
-        >
+        <p className={`${notice.warning} mb-6`} data-testid="draft-preview">
           Draft preview: fans can&apos;t see this event until you publish it from the{' '}
           <Link href="/organiser" className="font-medium underline">
             organiser page
@@ -87,15 +90,11 @@ async function EventDetails({ params }: Pick<PageProps<'/events/[slug]'>, 'param
           .
         </p>
       ) : (
-        !onSale && (
-          <p className="mb-6 rounded-md bg-zinc-100 px-4 py-3 text-sm dark:bg-zinc-900">
-            Tickets for this event are not on sale.
-          </p>
-        )
+        !onSale && <p className={`${notice.info} mb-6`}>Tickets for this event are not on sale.</p>
       )}
 
       <section aria-labelledby="seats-heading">
-        <h2 id="seats-heading" className="mb-4 text-xl font-medium">
+        <h2 id="seats-heading" className="font-display text-ink mb-4 text-xl font-semibold">
           Choose your seats
         </h2>
         <SeatPicker
@@ -116,16 +115,23 @@ async function EventDetails({ params }: Pick<PageProps<'/events/[slug]'>, 'param
 
 export default function EventPage({ params }: PageProps<'/events/[slug]'>) {
   return (
-    <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-10">
-      <Link href="/" className="text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100">
-        ← All events
-      </Link>
-      <div className="mt-4">
+    <PageShell>
+      <BackLink href="/events">All events</BackLink>
+      <div className="mt-6">
         {/* params, the session and seat availability are request data: stream them in. */}
-        <Suspense fallback={<p className="text-zinc-500">Loading event…</p>}>
+        <Suspense
+          fallback={
+            <div className="flex flex-col gap-4" aria-busy>
+              <p className="sr-only">Loading event…</p>
+              <div className="skeleton h-12 w-1/2" />
+              <div className="skeleton h-5 w-1/3" />
+              <div className="skeleton mt-6 h-96 w-full" />
+            </div>
+          }
+        >
           <EventDetails params={params} />
         </Suspense>
       </div>
-    </main>
+    </PageShell>
   );
 }

@@ -44,13 +44,19 @@ export function RegisterForm() {
         error={state.fieldErrors?.password}
       />
       <fieldset className="flex flex-col gap-2">
-        <legend className="mb-1 text-sm font-medium">I want to</legend>
-        <label className="flex items-center gap-2 text-sm font-normal">
-          <input type="radio" name="accountType" value="fan" defaultChecked />
+        <legend className="text-ink mb-1 text-sm font-medium">I want to</legend>
+        <label className="border-hairline-strong bg-surface-2 rounded-btn has-[:checked]:border-violet-soft has-[:checked]:bg-violet/10 has-[:focus-visible]:ring-violet-soft text-body flex cursor-pointer items-center gap-3 border px-3 py-3 text-sm font-normal transition has-[:focus-visible]:ring-2">
+          <input
+            type="radio"
+            name="accountType"
+            value="fan"
+            defaultChecked
+            className="accent-violet-soft"
+          />
           Buy tickets
         </label>
-        <label className="flex items-center gap-2 text-sm font-normal">
-          <input type="radio" name="accountType" value="organiser" />
+        <label className="border-hairline-strong bg-surface-2 rounded-btn has-[:checked]:border-violet-soft has-[:checked]:bg-violet/10 has-[:focus-visible]:ring-violet-soft text-body flex cursor-pointer items-center gap-3 border px-3 py-3 text-sm font-normal transition has-[:focus-visible]:ring-2">
+          <input type="radio" name="accountType" value="organiser" className="accent-violet-soft" />
           Sell tickets as an organiser (create and publish events)
         </label>
       </fieldset>

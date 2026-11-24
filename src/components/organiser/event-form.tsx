@@ -3,13 +3,13 @@
 import { useActionState, useState } from 'react';
 import { createEventAction, type CreateEventState } from '@/app/actions/organiser';
 import { FormError, FormField, SubmitButton } from '@/components/auth/form-field';
+import { input } from '@/components/ui/styles';
 import { DESCRIPTION_MAX, TIER_NAME_MAX, TITLE_MAX } from '@/lib/config';
 import type { VenueOption } from '@/lib/organiser';
 
 const initialState: CreateEventState = {};
 
-const inputClass =
-  'rounded-md border border-zinc-300 bg-transparent px-3 py-2 outline-none focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10 aria-invalid:border-red-500 dark:border-zinc-700 dark:focus:border-zinc-100';
+const inputClass = input;
 
 /**
  * Create-event form (SCRUM-28). The browser hints help, but every rule is enforced again by
@@ -34,8 +34,8 @@ export function EventForm({ venues, minStartsAt }: { venues: VenueOption[]; minS
       />
 
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="field-description" className="text-sm font-medium">
-          Description <span className="font-normal text-zinc-500">(optional)</span>
+        <label htmlFor="field-description" className="text-ink text-sm font-medium">
+          Description <span className="text-muted font-normal">(optional)</span>
         </label>
         <textarea
           id="field-description"
@@ -45,10 +45,10 @@ export function EventForm({ venues, minStartsAt }: { venues: VenueOption[]; minS
           defaultValue={value('description')}
           aria-invalid={errors.description ? true : undefined}
           aria-describedby={errors.description ? 'field-description-error' : undefined}
-          className={inputClass}
+          className={`${inputClass} h-auto py-2`}
         />
         {errors.description && (
-          <p id="field-description-error" role="alert" className="text-sm text-red-600">
+          <p id="field-description-error" role="alert" className="text-danger text-sm">
             {errors.description}
           </p>
         )}
@@ -65,7 +65,7 @@ export function EventForm({ venues, minStartsAt }: { venues: VenueOption[]; minS
       />
 
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="field-venueId" className="text-sm font-medium">
+        <label htmlFor="field-venueId" className="text-ink text-sm font-medium">
           Venue
         </label>
         <select
@@ -88,15 +88,15 @@ export function EventForm({ venues, minStartsAt }: { venues: VenueOption[]; minS
           ))}
         </select>
         {errors.venueId && (
-          <p role="alert" className="text-sm text-red-600">
+          <p role="alert" className="text-danger text-sm">
             {errors.venueId}
           </p>
         )}
       </div>
 
-      <fieldset className="flex flex-col gap-3">
-        <legend className="mb-1 text-sm font-medium">Prices</legend>
-        <p className="text-sm text-zinc-500">
+      <fieldset className="border-hairline bg-surface-2/50 rounded-card flex flex-col gap-4 border p-5">
+        <legend className="text-ink px-1 text-sm font-semibold">Prices</legend>
+        <p className="text-muted text-sm">
           Price each section in S$. Leave a price blank to keep that section off sale.
         </p>
         <FormError message={errors.prices} />
@@ -123,16 +123,16 @@ export function EventForm({ venues, minStartsAt }: { venues: VenueOption[]; minS
         ))}
       </fieldset>
 
-      <label className="flex items-start gap-2 text-sm">
+      <label className="border-hairline-strong bg-surface-2 rounded-card has-[:checked]:border-amber-soft/60 has-[:checked]:bg-amber-soft/10 flex cursor-pointer items-start gap-3 border p-4 text-sm transition">
         <input
           type="checkbox"
           name="waitingRoom"
           defaultChecked={value('waitingRoom') === 'on'}
-          className="mt-0.5"
+          className="accent-amber-soft mt-0.5"
         />
         <span>
-          <span className="font-medium">High demand: use the virtual waiting room</span>
-          <span className="block text-zinc-500">
+          <span className="text-ink font-medium">High demand: use the virtual waiting room</span>
+          <span className="text-muted block">
             Fans queue and are let in to pick seats in batches.
           </span>
         </span>

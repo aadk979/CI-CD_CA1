@@ -22,8 +22,10 @@ const seat = (scope: Page | Locator, label: string) =>
   scope.getByRole('button', { name: label, exact: true });
 
 test.describe('Event details and seat map (SCRUM-26, SCRUM-30)', () => {
-  test('opens from the home page and shows details, prices and the seat map', async ({ page }) => {
-    await page.goto('/');
+  test('opens from the event catalogue and shows details, prices and the seat map', async ({
+    page,
+  }) => {
+    await page.goto('/events');
     await page.getByRole('link', { name: 'Neon Skyline Tour' }).click();
 
     await expect(page).toHaveURL(EVENT_PATH);
