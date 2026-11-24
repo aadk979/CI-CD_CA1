@@ -53,6 +53,8 @@ test.describe('Checkout (SCRUM-39) and My tickets (SCRUM-40)', () => {
       await card.getByPlaceholder('1234 1234 1234 1234').fill(number);
       await card.getByPlaceholder('MM / YY').fill('12 / 34');
       await card.getByPlaceholder('CVC').fill('123');
+      // Pin the country: the default follows the browser locale, and the US asks for a ZIP.
+      await card.getByLabel('Country', { exact: true }).selectOption('SG');
       // Leaving the card field makes Stripe's form reflow; settle before aiming at Pay.
       await ada.getByRole('heading', { name: 'Payment' }).click();
       await ada.getByRole('button', { name: /^Pay/ }).scrollIntoViewIfNeeded();
