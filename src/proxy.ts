@@ -42,9 +42,9 @@ const FORBIDDEN_HTML = `<!doctype html>
 <meta name="robots" content="noindex"><title>Access denied · ${APP_NAME}</title>
 <style>
 body{font-family:system-ui,sans-serif;max-width:40rem;margin:4rem auto;padding:0 1rem;
-color:#18181b;background:#fff;line-height:1.5}
-a{color:inherit;font-weight:500}
-@media (prefers-color-scheme:dark){body{color:#f4f4f5;background:#09090b}}
+color:#c4c4d4;background:#07070c;line-height:1.5}
+h1{color:#f5f5fa}
+a{color:#a78bfa;font-weight:600}
 </style></head>
 <body data-testid="forbidden">
 <h1>You don't have access</h1>

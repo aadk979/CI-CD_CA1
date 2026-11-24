@@ -2,6 +2,7 @@
 
 import { useActionState } from 'react';
 import { publishEventAction, type PublishEventState } from '@/app/actions/organiser';
+import { button } from '@/components/ui/styles';
 
 const initialState: PublishEventState = {};
 
@@ -16,12 +17,12 @@ export function PublishButton({ eventId, title }: { eventId: string; title: stri
         type="submit"
         disabled={pending}
         aria-label={`Publish ${title}`}
-        className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+        className={`${button.primary} h-9`}
       >
         {pending ? 'Publishing…' : 'Publish'}
       </button>
       {state.message && !pending && (
-        <p role="alert" className="text-sm text-red-700 dark:text-red-400">
+        <p role="alert" className="text-danger text-sm">
           {state.message}
         </p>
       )}

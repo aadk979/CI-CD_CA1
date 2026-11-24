@@ -1,7 +1,10 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { LogoMark } from '@/components/layout/logo';
+import { Backdrop } from '@/components/ui/page';
+import { card } from '@/components/ui/styles';
 
-/** Shared frame for the login and register pages. */
+/** Shared frame for the login and register pages: a centred card over the brand glow. */
 export function AuthCard({
   title,
   children,
@@ -12,15 +15,24 @@ export function AuthCard({
   footer: { text: string; linkText: string; href: '/login' | '/register' };
 }) {
   return (
-    <main className="mx-auto w-full max-w-sm flex-1 px-4 py-16">
-      <h1 className="mb-8 text-2xl font-semibold tracking-tight">{title}</h1>
-      {children}
-      <p className="mt-6 text-sm text-zinc-500">
-        {footer.text}{' '}
-        <Link href={footer.href} className="font-medium text-zinc-900 underline dark:text-zinc-100">
-          {footer.linkText}
-        </Link>
-      </p>
+    <main className="relative isolate flex flex-1 items-start justify-center px-4 py-16 md:py-24">
+      <Backdrop />
+      <div className="animate-fade-up w-full max-w-md">
+        <div className={`${card} bg-surface/90 p-8 backdrop-blur`}>
+          <LogoMark className="mb-6 h-9 w-9" />
+          <h1 className="font-display text-display-sm text-ink mb-8 font-semibold">{title}</h1>
+          {children}
+        </div>
+        <p className="text-muted mt-6 text-center text-sm">
+          {footer.text}{' '}
+          <Link
+            href={footer.href}
+            className="text-ink decoration-violet-soft font-semibold underline underline-offset-4"
+          >
+            {footer.linkText}
+          </Link>
+        </p>
+      </div>
     </main>
   );
 }
