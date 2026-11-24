@@ -41,8 +41,8 @@ const position = async (page: Page) =>
   Number(await page.getByTestId('queue-position').textContent());
 
 test.describe('Virtual waiting room (SCRUM-34, SCRUM-35, SCRUM-36)', () => {
-  test('the home page flags the high-demand event', async ({ page }) => {
-    await page.goto('/');
+  test('the event catalogue flags the high-demand event', async ({ page }) => {
+    await page.goto('/events');
     const item = page.getByTestId('event-list').getByRole('listitem').filter({
       hasText: 'Aurora World Tour',
     });

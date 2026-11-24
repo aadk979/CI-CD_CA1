@@ -38,7 +38,7 @@ async function Dashboard({ searchParams }: Pick<PageProps<'/organiser'>, 'search
         >
           {created
             ? `“${created.title}” saved as a draft. Fans can’t see it until you publish it.`
-            : `“${published!.title}” is on sale and listed on the home page.`}
+            : `“${published!.title}” is on sale and listed in the event catalogue.`}
         </p>
       )}
 
