@@ -27,6 +27,20 @@ async function grantOrganiser(email: string) {
 const inDays = (days: number) =>
   new Date(Date.now() + days * 86_400_000 + 8 * 3_600_000).toISOString().slice(0, 16);
 
+test.describe('Organiser sign-up', () => {
+  test('choosing "organiser" at registration lands in the back office', async ({ page }) => {
+    await page.goto('/register');
+    await page.getByLabel('Name').fill('Olive Organiser');
+    await page.getByLabel('Email').fill(uniqueEmail());
+    await page.getByLabel('Password').fill('correct-horse-battery');
+    await page.getByLabel(/Sell tickets as an organiser/).check();
+    await page.getByRole('button', { name: 'Create account' }).click();
+
+    await expect(page).toHaveURL('/organiser');
+    await expect(page.getByRole('link', { name: 'Organiser' }).first()).toBeVisible();
+  });
+});
+
 test.describe('Organiser access (SCRUM-24)', () => {
   test('visitors are sent to log in', async ({ page }) => {
     await page.goto('/organiser');

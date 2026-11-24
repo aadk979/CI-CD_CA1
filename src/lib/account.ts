@@ -1,4 +1,5 @@
 import { isAPIError } from 'better-auth/api';
+import type { PrismaClient } from '@/generated/prisma/client';
 import type { Auth } from './auth';
 import {
   loginSchema,
@@ -8,6 +9,7 @@ import {
   type LoginInput,
   type RegisterInput,
 } from './auth-validation';
+import { setUserRole } from './organiser';
 
 /**
  * Framework-free account logic. Server Actions wrap these with `headers()` and
@@ -40,10 +42,16 @@ function errorCode(err: unknown): string | undefined {
   return body?.code;
 }
 
+/**
+ * `raw.accountType === 'organiser'` makes the new account an organiser (self-serve
+ * organiser sign-up); anything else is a fan. `prisma` is only needed for organisers: the
+ * role can't be set through Better Auth's sign-up (`input: false`), so it is set after.
+ */
 export async function registerAccount(
   auth: Auth,
   raw: Record<string, string>,
   headers: Headers,
+  prisma?: PrismaClient,
 ): Promise<FormState<RegisterInput>> {
   const values = { name: raw.name ?? '', email: raw.email ?? '' };
   const parsed = registerSchema.safeParse(raw);
@@ -53,6 +61,11 @@ export async function registerAccount(
 
   try {
     await auth.api.signUpEmail({ body: parsed.data, headers });
+    if (raw.accountType === 'organiser') {
+      if (!prisma) throw new Error('registerAccount needs prisma to create an organiser');
+      await setUserRole(prisma, parsed.data.email, 'ORGANISER');
+      return { ok: true, organiser: true };
+    }
     return { ok: true };
   } catch (err) {
     if (!isAPIError(err)) throw err;

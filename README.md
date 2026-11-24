@@ -110,7 +110,11 @@ npm run dev:worker             # in a second terminal: BullMQ worker
 The header shows **Live** once the WebSocket connects and _worker seen hh:mm:ss_ once heartbeats
 arrive from the worker. `GET /api/health` reports database, Redis and worker status.
 
-**Organisers:** everyone signs up as a fan. To manage events, register an account, then run
+**Organisers:** choose "Sell tickets as an organiser" on `/register` and you land in `/organiser` straight away. (Accounts that signed up as fans can still be promoted with the script below.)
+
+**Payments (Stripe, test mode):** copy a _test_ key pair from https://dashboard.stripe.com/test/apikeys into `.env.local` as `STRIPE_SECRET_KEY` and `STRIPE_PUBLISHABLE_KEY`. Pay with `4242 4242 4242 4242`, any future expiry, any CVC (`4000 0000 0000 0002` is declined).
+
+Legacy note: To manage events, register an account, then run
 `npm run organiser:grant -- you@example.com` (`--revoke` undoes it). The **Organiser** link then
 appears in the header: create an event as a draft at `/organiser/events/new`, preview it, and
 publish it to put it on sale. In production, run the same `UPDATE "User" SET role = 'ORGANISER'
@@ -140,11 +144,11 @@ Run the full production stack in containers instead: `docker compose --profile a
 
 ## Testing strategy
 
-| Level       | Tool       | Scope                                                                                | Infra                |
-| ----------- | ---------- | ------------------------------------------------------------------------------------ | -------------------- |
-| Unit        | Vitest     | Pure logic: validation, card checks, pricing/formatting, env parsing, job processors | none (mocks)         |
-| Integration | Vitest     | Real Postgres + Redis: holds, checkout, waiting room, auth, Socket.IO, BullMQ jobs   | Docker / CI services |
-| E2E         | Playwright | Production build in Chromium: every story's main path, live updates, queue, checkout | Docker / CI services |
+| Level       | Tool       | Scope                                                                                          | Infra                |
+| ----------- | ---------- | ---------------------------------------------------------------------------------------------- | -------------------- |
+| Unit        | Vitest     | Pure logic: validation, Stripe payment checks, pricing/formatting, env parsing, job processors | none (mocks)         |
+| Integration | Vitest     | Real Postgres + Redis: holds, checkout, waiting room, auth, Socket.IO, BullMQ jobs             | Docker / CI services |
+| E2E         | Playwright | Production build in Chromium: every story's main path, live updates, queue, checkout           | Docker / CI services |
 
 The **[test plan](qa/test-plan.md)** sets out scope, environments, entry/exit criteria and risks.
 The **[test case specification](qa/test-cases.md)** lists every case with its equivalence classes

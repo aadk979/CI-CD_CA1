@@ -39,6 +39,8 @@ export type FieldErrors<T> = Partial<Record<keyof T, string>>;
  */
 export interface FormState<T> {
   ok: boolean;
+  /** Set on a successful sign-up of an organiser account. */
+  organiser?: boolean;
   fieldErrors?: FieldErrors<T>;
   formError?: string;
   values?: Partial<Record<Exclude<keyof T, 'password'>, string>>;

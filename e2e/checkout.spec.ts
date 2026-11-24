@@ -32,6 +32,9 @@ async function holdTwoSeats(page: Page): Promise<string[]> {
 }
 
 test.describe('Checkout (SCRUM-39) and My tickets (SCRUM-40)', () => {
+  // The payment step talks to Stripe's test mode, so it needs test keys (see .env.example).
+  test.skip(!process.env.STRIPE_SECRET_KEY, 'STRIPE_SECRET_KEY (test mode) is not set');
+
   test('a fan pays for held seats, sees them in My tickets, and nobody else can buy them', async ({
     browser,
   }) => {
@@ -44,19 +47,25 @@ test.describe('Checkout (SCRUM-39) and My tickets (SCRUM-40)', () => {
     await expect(ada.getByTestId('cart-total')).toHaveText(/Total\s*\$136\.00/);
     await expect(ada.getByTestId('checkout-countdown')).toHaveText(/^(10:00|9:\d\d)$/);
 
-    // An invalid card and a declined card both leave the seats held.
-    const card = ada.getByLabel('Card number');
-    await card.fill('1234 5678 9012 3456');
+    // Stripe's Payment Element lives in an iframe. A declined card leaves the seats held.
+    const card = ada.frameLocator('iframe[title*="Secure payment"]').first();
+    const fillCard = async (number: string) => {
+      await card.getByPlaceholder('1234 1234 1234 1234').fill(number);
+      await card.getByPlaceholder('MM / YY').fill('12 / 34');
+      await card.getByPlaceholder('CVC').fill('123');
+      // Pin the country: the default follows the browser locale, and the US asks for a ZIP.
+      await card.getByLabel('Country', { exact: true }).selectOption('SG');
+      // Leaving the card field makes Stripe's form reflow; settle before aiming at Pay.
+      await ada.getByRole('heading', { name: 'Payment' }).click();
+      await ada.getByRole('button', { name: /^Pay/ }).scrollIntoViewIfNeeded();
+      await ada.waitForTimeout(1000);
+    };
+    await fillCard('4000000000000002');
     await ada.getByRole('button', { name: 'Pay $136.00' }).click();
-    await expect(ada.getByTestId('payment-error')).toHaveText(
-      'Enter a valid 16-digit card number.',
-    );
-    await card.fill('4000 0000 0000 0002');
-    await ada.getByRole('button', { name: 'Pay $136.00' }).click();
-    await expect(ada.getByTestId('payment-error')).toContainText('Your card was declined');
+    await expect(ada.getByTestId('payment-error')).toContainText(/declined/i, { timeout: 20_000 });
     await expect(ada.getByTestId('cart-total')).toBeVisible();
 
-    await card.fill('4242 4242 4242 4242');
+    await fillCard('4242424242424242');
     await ada.getByRole('button', { name: 'Pay $136.00' }).click();
 
     await expect(ada).toHaveURL(/\/tickets\?order=/);

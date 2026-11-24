@@ -5,6 +5,7 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { logIn, logOut, registerAccount } from '@/lib/account';
 import { getAuth } from '@/lib/auth';
+import { getPrisma } from '@/lib/db';
 import {
   formToObject,
   type FormState,
@@ -18,10 +19,11 @@ export async function registerAction(
   _prev: FormState<RegisterInput>,
   formData: FormData,
 ): Promise<FormState<RegisterInput>> {
-  const input = formToObject(formData, ['name', 'email', 'password']);
+  const input = formToObject(formData, ['name', 'email', 'password', 'accountType']);
   const requestHeaders = await headers();
-  const result = await registerAccount(getAuth(), input, requestHeaders);
-  if (result.ok) redirect('/'); // signed in automatically; session cookie already set
+  const result = await registerAccount(getAuth(), input, requestHeaders, getPrisma());
+  // Signed in automatically; session cookie already set. Organisers land in their back office.
+  if (result.ok) redirect(result.organiser ? '/organiser' : '/');
   return result;
 }
 

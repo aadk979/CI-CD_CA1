@@ -10,7 +10,8 @@
 #
 # Repository variables:  DEPLOY_ENABLED=true, PRODUCTION_URL=http://<static-ip-or-domain>
 # Repository secrets:    LIGHTSAIL_HOST, LIGHTSAIL_USER, LIGHTSAIL_SSH_KEY,
-#                        LIGHTSAIL_KNOWN_HOSTS (output of `ssh-keyscan <host>`)
+#                        LIGHTSAIL_KNOWN_HOSTS (output of `ssh-keyscan <host>`),
+#                        STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY (written to the server .env)
 # ─────────────────────────────────────────────────────────────────────────
 
 name: CD Pipeline
@@ -80,6 +81,19 @@ jobs:
       - name: Upload deploy files
         run: |
           scp deploy/docker-compose.prod.yml deploy/Caddyfile deploy/deploy.sh "lightsail:$DEPLOY_DIR/"
+
+      - name: Sync Stripe keys into the server .env
+        # Keys travel over SSH stdin (never on a command line or in logs) and replace any
+        # previous values, so rotating the GitHub secrets and redeploying is all it takes.
+        env:
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_PUBLISHABLE_KEY: ${{ secrets.STRIPE_PUBLISHABLE_KEY }}
+        run: |
+          printf '%s\n' "STRIPE_SECRET_KEY=$STRIPE_SECRET_KEY" "STRIPE_PUBLISHABLE_KEY=$STRIPE_PUBLISHABLE_KEY" |
+            ssh lightsail "cd $DEPLOY_DIR && umask 077 && cat > .stripe.env &&
+              { [ -z \"\$(tail -c1 .env)\" ] || echo >> .env; } &&
+              sed -i '/^STRIPE_SECRET_KEY=/d;/^STRIPE_PUBLISHABLE_KEY=/d' .env &&
+              cat .stripe.env >> .env && rm -f .stripe.env"
 
       - name: Deploy (migrate → restart → smoke test → auto-rollback)
         env:

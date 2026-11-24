@@ -39,6 +39,9 @@ export default defineConfig({
         PORT: String(PORT),
         BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET!,
         BETTER_AUTH_URL: baseURL,
+        // Stripe test mode; the checkout e2e skips itself when these are unset.
+        STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY ?? '',
+        STRIPE_PUBLISHABLE_KEY: process.env.STRIPE_PUBLISHABLE_KEY ?? '',
         ...WAITING_ROOM,
       },
     },
