@@ -2,9 +2,12 @@
 #  CI Pipeline — every push / PR to main
 # ─────────────────────────────────────────────────────────────────────────
 #
-#   quality ─┬─► test ──┬─► image (build; push on main) ──► [CD Pipeline]
-#            ├─► e2e ───┤
-#   audit ───┘          └─► pages (QA reports → GitHub Pages, main only)
+#   lint ──────┐
+#   format ────┼─► test ──┬─► image (build; push on main) ──► [CD Pipeline]
+#   typecheck ─┤  e2e ────┤        ▲
+#              │          └─► pages (QA reports → GitHub Pages, main only)
+#   audit ─────┴──────────────────┤
+#   migrations ───────────────────┘
 #
 # No external database needed: Postgres + Redis run as service containers.
 #
@@ -41,8 +44,8 @@ env:
 
 jobs:
   # ═══════════════════════════════════════════════════════════════════════
-  quality:
-    name: Lint, Format & Types
+  lint:
+    name: ESLint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -51,12 +54,57 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
-      - name: ESLint
-        run: npm run lint
-      - name: Prettier
-        run: npm run format:check
-      - name: TypeScript
-        run: npm run typecheck
+      - run: npm run lint
+
+  format:
+    name: Prettier
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run format:check
+
+  typecheck:
+    name: TypeScript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+
+  migrations:
+    name: Database Migrations
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: ticketing
+          POSTGRES_PASSWORD: ticketing
+          POSTGRES_DB: ticketing_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U ticketing" --health-interval 5s
+          --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Validate Prisma schema
+        run: npx prisma validate
+      - name: Apply every migration to an empty database
+        run: npx prisma migrate deploy
 
   # ═══════════════════════════════════════════════════════════════════════
   audit:
@@ -75,7 +123,7 @@ jobs:
   test:
     name: Unit & Integration Tests
     runs-on: ubuntu-latest
-    needs: [quality]
+    needs: [lint, format, typecheck]
     services:
       postgres:
         image: postgres:17-alpine
@@ -124,7 +172,7 @@ jobs:
   e2e:
     name: E2E Tests (Playwright)
     runs-on: ubuntu-latest
-    needs: [quality]
+    needs: [lint, format, typecheck]
     services:
       postgres:
         image: postgres:17-alpine
@@ -182,7 +230,7 @@ jobs:
   image:
     name: Docker Image
     runs-on: ubuntu-latest
-    needs: [test, e2e, audit]
+    needs: [test, e2e, audit, migrations]
     permissions:
       contents: read
       packages: write
