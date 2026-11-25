@@ -243,6 +243,7 @@ jobs:
           <p>Commit <code>${GITHUB_SHA::7}</code> · tests: ${{ needs.test.result }} · e2e: ${{ needs.e2e.result }}</p>
           <a href="coverage-report/index.html">Unit + integration coverage</a>
           <a href="playwright-report/index.html">Playwright E2E report</a>
+          <p style="color:#555;font-size:.9rem">Coverage scope: shared libraries, server code and Server Actions (Vitest). Pages and components are verified in a real browser by the Playwright E2E suite.</p>
           </body></html>
           EOF
       - uses: actions/configure-pages@v6

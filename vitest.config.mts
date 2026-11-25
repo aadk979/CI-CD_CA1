@@ -35,15 +35,14 @@ export default defineConfig({
       provider: 'v8',
       reportsDirectory: 'coverage',
       reporter: ['text', 'html', 'json-summary', 'lcov'],
-      // Everything under src/, plus the root server/worker entrypoints.
-      // all-files reporting: untested files show up as 0% instead of being hidden.
-      include: ['src/**/*.{ts,tsx}', 'server.ts', 'worker.ts'],
+      // Logic that Vitest can exercise: shared libraries, server code and Server Actions.
+      // Pages and components are verified in a real browser by the Playwright E2E suite (e2e/).
+      include: ['src/lib/**/*.ts', 'src/server/**/*.ts', 'src/app/actions/**/*.ts'],
       exclude: ['src/generated/**', '**/*.d.ts'],
-      // Report everything, but only gate the server-side logic. UI/pages/actions have
-      // no unit/integration tests (Playwright E2E covers them), so they show as low coverage.
       thresholds: {
         'src/lib/**/*.ts': { statements: 80, branches: 80, functions: 80, lines: 80 },
         'src/server/**/*.ts': { statements: 80, branches: 80, functions: 80, lines: 80 },
+        'src/app/actions/**/*.ts': { statements: 80, branches: 80, functions: 80, lines: 80 },
       },
     },
   },
