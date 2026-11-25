@@ -35,14 +35,15 @@ export default defineConfig({
       provider: 'v8',
       reportsDirectory: 'coverage',
       reporter: ['text', 'html', 'json-summary', 'lcov'],
-      // Server-side logic. UI routes/components are exercised by Playwright E2E instead.
-      include: ['src/lib/**/*.ts', 'src/server/**/*.ts'],
-      exclude: ['src/generated/**'],
+      // Everything under src/, plus the root server/worker entrypoints.
+      // all-files reporting: untested files show up as 0% instead of being hidden.
+      include: ['src/**/*.{ts,tsx}', 'server.ts', 'worker.ts'],
+      exclude: ['src/generated/**', '**/*.d.ts'],
+      // Report everything, but only gate the server-side logic. UI/pages/actions have
+      // no unit/integration tests (Playwright E2E covers them), so they show as low coverage.
       thresholds: {
-        statements: 80,
-        branches: 80,
-        functions: 80,
-        lines: 80,
+        'src/lib/**/*.ts': { statements: 80, branches: 80, functions: 80, lines: 80 },
+        'src/server/**/*.ts': { statements: 80, branches: 80, functions: 80, lines: 80 },
       },
     },
   },
