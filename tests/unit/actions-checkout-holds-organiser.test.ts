@@ -66,7 +66,9 @@ describe('checkout actions', () => {
     orders.getCart.mockResolvedValue({ totalCents: 5000, currency: 'sgd' });
     createPaymentIntent.mockResolvedValueOnce({ clientSecret: 'sec' });
     expect(await createPaymentIntentAction(ID)).toEqual({ clientSecret: 'sec' });
-    expect(createPaymentIntent).toHaveBeenCalledWith(expect.objectContaining({ amountCents: 5000 }));
+    expect(createPaymentIntent).toHaveBeenCalledWith(
+      expect.objectContaining({ amountCents: 5000 }),
+    );
     createPaymentIntent.mockRejectedValueOnce(new Error('stripe'));
     expect((await createPaymentIntentAction(ID)).message).toMatch(/unavailable/);
   });

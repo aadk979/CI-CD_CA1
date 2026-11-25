@@ -37,7 +37,9 @@ beforeEach(() => vi.resetAllMocks());
 describe('auth actions', () => {
   it('register redirects fans home and organisers to the back office', async () => {
     account.registerAccount.mockResolvedValueOnce({ ok: true, organiser: false });
-    await expect(registerAction({} as never, form({ email: 'a@b.c' }))).rejects.toThrow('redirect:/');
+    await expect(registerAction({} as never, form({ email: 'a@b.c' }))).rejects.toThrow(
+      'redirect:/',
+    );
     account.registerAccount.mockResolvedValueOnce({ ok: true, organiser: true });
     await expect(registerAction({} as never, form({}))).rejects.toThrow('redirect:/organiser');
   });
